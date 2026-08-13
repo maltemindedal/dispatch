@@ -55,7 +55,7 @@ flowchart LR
   holding the lease.
 - **`QueueMaintenance`** sweeps on a timer with two idempotent jobs: promote `SCHEDULED`/`FAILED`
   rows whose time has come, and return `RUNNING` rows with expired leases to `PENDING`. Every
-  instance runs it against the shared store; overlapping sweeps just find less to do.
+  instance runs it against the shared store; overlapping sweeps find less to do.
 - **`JobStore`** is the persistence seam. The in-memory implementation and the JDBC one are held
   to the same contract test suite (`JobStoreContract`), so "swappable" is a test result rather
   than a claim.
@@ -71,7 +71,7 @@ threads. Blocking calls inside a handler are fine and expected.
 
 The dispatcher is a **platform thread**. There is exactly one, it lives for the whole process,
 and it spends its life blocked in a database call — none of the reasons to prefer a virtual
-thread apply. Using one everywhere just because they exist is how you end up not knowing what
+thread apply. Using one everywhere merely because they exist is how you end up not knowing what
 they're for.
 
 A `Semaphore` sized to `concurrency` gates claiming, so the engine never claims work it has no

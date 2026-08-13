@@ -12,9 +12,10 @@ Docker, and the PostgreSQL container from the repo's compose file:
 docker compose up -d
 ```
 
-> **Why not H2?** The dev profile's in-memory H2 accepts the same SQL but has coarser locking:
-> a second instance pointed at the same H2 database gets empty claims rather than the next
-> unlocked rows. Single instance is fine on H2; anything multi-instance needs PostgreSQL.
+> **Why not H2?** The dev profile's H2 accepts the same SQL but does not reproduce PostgreSQL's
+> contention behaviour — see
+> [the dev profile](../reference/configuration.md#the-dev-profile-local-development). Anything
+> multi-instance needs PostgreSQL.
 
 ## Start two instances
 
@@ -45,8 +46,10 @@ curl -s localhost:8080/stats | jq '{worker: .workerId, claimed: .thisInstance.cl
 curl -s localhost:8081/stats | jq '{worker: .workerId, claimed: .thisInstance.claimed}'
 ```
 
-A representative run: instance A claimed 104, instance B claimed 96, `COMPLETED` is 200. The two
-counts add up exactly, because no job ran twice. There is no coordinator making that happen — the
+Both instances claim a share of the work — roughly even on an otherwise idle machine — and the
+two `claimed` counts sum to exactly 200 once `queueDepth.COMPLETED` reaches 200, because no job
+ran twice. (That exactly-once property is what `ConcurrentInstancesIntegrationTest` asserts, with
+300 jobs against a containerised PostgreSQL.) There is no coordinator making it happen — the
 claim query's `FOR UPDATE SKIP LOCKED` is the entire mutual-exclusion mechanism
 ([how that works](../architecture/reliability.md#claiming-across-several-instances)).
 
@@ -59,7 +62,7 @@ Note that `queueDepth` is identical from both instances (it reads the shared tab
 claiming, drains its in-flight jobs within the drain timeout, and exits; the other instance
 carries on. Nothing is lost or re-run.
 
-```
+```text
 WorkerPool : Worker pool worker-e59ff4c1 shutting down: no longer claiming,
              draining 8 in-flight job(s), deadline PT30S
 WorkerPool : Worker pool worker-e59ff4c1 stopped (clean drain: true)

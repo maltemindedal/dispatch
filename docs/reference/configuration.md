@@ -27,11 +27,9 @@ Durations use Spring's syntax: `250ms`, `30s`, `5m`.
 
 ## Retry settings (`dispatch.retry.*`)
 
-Backoff for a failed attempt follows
-
-```
-delay = min(base-delay * multiplier^(attempt-1), max-delay) * (1 - jitter-factor + jitter-factor * random[0,1))
-```
+These four keys shape the exponential-backoff-with-jitter curve described in
+[Reliability mechanics](../architecture/reliability.md#retries-and-backoff), which also explains
+why the jitter is not optional decoration.
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
@@ -40,14 +38,11 @@ delay = min(base-delay * multiplier^(attempt-1), max-delay) * (1 - jitter-factor
 | `retry.max-delay` | duration | `1m` | Ceiling the growth is clamped to. |
 | `retry.jitter-factor` | double in [0, 1] | `0.5` | `0` is pure exponential backoff; `1.0` is AWS-style full jitter; the default keeps at least half the nominal delay. |
 
-Why jitter is not optional decoration: see
-[Reliability mechanics](../architecture/reliability.md#retries-and-backoff).
-
 ## Profiles
 
 The default profile is `dev` (set via `spring.profiles.default` in `application.yml`).
 
-### `dev` — local development
+### The dev profile (local development)
 
 [`application-dev.yml`](../../dispatch-api/src/main/resources/application-dev.yml). In-memory H2
 (`jdbc:h2:mem:dispatch`), no Docker required, `dev.dispatch` logging at DEBUG, and the H2 web
@@ -58,7 +53,7 @@ does not reproduce is contention behaviour: its locking is coarser, so a second 
 at the same H2 database gets empty claims rather than the next unlocked rows. Single instance is
 fine; for anything multi-instance, use the `postgres` profile.
 
-### `postgres`
+### The postgres profile
 
 [`application-postgres.yml`](../../dispatch-api/src/main/resources/application-postgres.yml).
 Connection settings come from environment variables, with defaults matching the repo's

@@ -34,7 +34,7 @@ rather than a claim.
 
 A worker can finish a job and die before recording the result, at which point the visibility
 timeout hands that job to someone else. **Handlers must be idempotent.** Exactly-once delivery is
-not available to a queue that talks to the outside world, and pretending otherwise just moves the
+not available to a queue that talks to the outside world, and pretending otherwise moves the
 bug somewhere harder to find.
 
 What the engine *does* guarantee is that a stalled worker cannot corrupt the record: every write
@@ -58,13 +58,13 @@ run twice; too long and crash recovery crawls.
 ## Retries and backoff
 
 On failure the attempt counter has already been incremented (that happened at claim time), so the
-decision is simply whether any budget is left. If yes: `FAILED`, with `scheduled_at` set to
+only decision left is whether any budget remains. If yes: `FAILED`, with `scheduled_at` set to
 `now + backoff`. If no: `DEAD`. A handler can also throw `PermanentJobFailureException` to skip
 the budget entirely — a malformed payload does not get better on the fourth attempt.
 
 Backoff is exponential with jitter:
 
-```
+```text
 delay = min(base * multiplier^(attempt-1), maxDelay) * (1 - jitter + jitter * random[0,1))
 ```
 
@@ -89,7 +89,7 @@ queue under the normal retry rules. Anything that never got that far is recovere
 Under Spring, `server.shutdown: graceful` drains HTTP first, then the `JobQueue` bean is
 destroyed and drains the workers. A real `SIGTERM` under load logs it plainly:
 
-```
+```text
 GracefulShutdown : Commencing graceful shutdown. Waiting for active requests to complete
 WorkerPool       : Worker pool worker-e59ff4c1 shutting down: no longer claiming,
                    draining 8 in-flight job(s), deadline PT30S

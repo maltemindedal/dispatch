@@ -22,12 +22,15 @@ have one) and, for the PostgreSQL profile and the integration tests, Docker.
 ./gradlew build
 ```
 
-Submit a job and watch it run:
+The app is ready when it logs
+`Job queue worker-... started with handlers for [resize-image, send-email]`. Submit a job and
+watch it run:
 
 ```bash
 curl -s -X POST localhost:8080/jobs \
   -H 'Content-Type: application/json' \
   -d '{"type":"send-email","payload":{"to":"someone@example.com","subject":"Hi"},"maxRetries":5}'
+# → 201 with the stored job: {"id":"...","state":"PENDING","attempt":0,...}
 
 # The email simulator fails about 30% of the time, so this is worth watching:
 curl -s localhost:8080/stats | jq
@@ -44,24 +47,22 @@ The application creates its own schema at startup, so there is no migration step
 
 ## Documentation
 
-| | |
-| --- | --- |
-| [Getting started](docs/getting-started.md) | Zero to a running queue, step by step. |
-| [Writing a handler](docs/guides/writing-a-handler.md) | Register your own job type and get the semantics right. |
-| [Running multiple instances](docs/guides/running-multiple-instances.md) | See two processes share one queue without double-processing. |
-| [Configuration reference](docs/reference/configuration.md) | Every `dispatch.*` key, profile, and environment variable. |
-| [REST API reference](docs/reference/api.md) | Endpoints, request/response shapes, status codes, errors. |
-| [Architecture](docs/architecture/overview.md) | Modules, threading model, and how the pieces fit. |
-| [Job lifecycle](docs/architecture/job-lifecycle.md) | The six states and why they are these six. |
-| [Reliability mechanics](docs/architecture/reliability.md) | Claiming, leases, at-least-once delivery, backoff, shutdown. |
-| [Known limitations](docs/architecture/limitations.md) | What this deliberately doesn't do, and what to fix first. |
-| [Contributing](docs/contributing.md) | Build, test, and CI details for working on the code. |
+- **Tutorial** — [Getting started](docs/getting-started.md): zero to a running queue.
+- **Guides** — [writing a handler](docs/guides/writing-a-handler.md),
+  [running multiple instances](docs/guides/running-multiple-instances.md).
+- **Reference** — [configuration](docs/reference/configuration.md),
+  [REST API](docs/reference/api.md).
+- **Architecture** — [overview](docs/architecture/overview.md), the
+  [job lifecycle](docs/architecture/job-lifecycle.md),
+  [reliability mechanics](docs/architecture/reliability.md), and
+  [known limitations](docs/architecture/limitations.md).
 
-The full index lives at [docs/README.md](docs/README.md).
+The annotated index — every document, what it covers, who it's for — is
+[docs/README.md](docs/README.md).
 
 ## Project structure
 
-```
+```text
 dispatch-core/       The engine: domain model, state machine, worker pool, in-memory store.
                      Depends on the JDK and SLF4J only — no Spring, no JDBC.
 dispatch-postgres/   JdbcJobStore: the same engine backed by PostgreSQL or H2 via

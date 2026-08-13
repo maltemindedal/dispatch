@@ -16,7 +16,7 @@
 ./gradlew :dispatch-api:bootRun   # run the app locally (H2, port 8080)
 ```
 
-The suite is around 180 tests (run `./gradlew test` for the current count), and the timing-heavy
+The suite is around 180 tests (as of 2026-08; run `./gradlew test` for the current count), and the timing-heavy
 ones are driven by a controllable clock rather than sleeps, so the whole thing is fast and not
 flaky.
 

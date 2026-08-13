@@ -21,7 +21,7 @@ and nothing else to set up.
 
 You should see log lines like:
 
-```
+```text
 Job queue backed by JDBC store
 Registered job handlers: [resize-image, send-email]
 Job queue worker-3f2a91bc started with handlers for [resize-image, send-email]
@@ -111,5 +111,5 @@ queue is durable and shareable: restart the app and unfinished jobs are still th
 - Two processes sharing this PostgreSQL queue without double-processing:
   [Running multiple instances](guides/running-multiple-instances.md).
 - Registering your own job type: [Writing a handler](guides/writing-a-handler.md).
-- All the knobs you just left at their defaults: [Configuration](reference/configuration.md).
-- Why it behaves the way you just observed: [Reliability mechanics](architecture/reliability.md).
+- All the knobs you left at their defaults: [Configuration](reference/configuration.md).
+- Why it behaves the way you observed: [Reliability mechanics](architecture/reliability.md).

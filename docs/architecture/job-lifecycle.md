@@ -17,13 +17,15 @@ stateDiagram-v2
     RUNNING --> DEAD : retries exhausted or permanent failure
     RUNNING --> PENDING : visibility timeout
     FAILED --> PENDING : backoff elapsed (sweeper)
-    FAILED --> DEAD : budget revoked
-    PENDING --> DEAD : killed
-    SCHEDULED --> DEAD : killed
     DEAD --> PENDING : manual retry
 
     COMPLETED --> [*]
 ```
+
+The diagram shows the transitions the running system actually takes. `JobState` declares three
+more as legal — `PENDING → DEAD`, `SCHEDULED → DEAD`, and `FAILED → DEAD` — as headroom for an
+operational "kill" that no code path currently performs: today the only way into `DEAD` is from
+`RUNNING`, and removing an unstarted job is done by cancellation, which deletes the row.
 
 | State | Meaning |
 | --- | --- |
