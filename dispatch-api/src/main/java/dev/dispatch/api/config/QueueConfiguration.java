@@ -13,7 +13,6 @@ import dev.dispatch.core.store.memory.InMemoryJobStore;
 import dev.dispatch.postgres.JdbcJobStore;
 import dev.dispatch.postgres.JobSchema;
 import java.time.Clock;
-import java.util.UUID;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,11 +70,19 @@ public class QueueConfiguration {
         return registry;
     }
 
+    /** Unset retry properties fall back to the policy's own defaults. */
     @Bean
     RetryPolicy retryPolicy(QueueProperties properties) {
         QueueProperties.Retry retry = properties.retry();
         return new ExponentialBackoffRetryPolicy(
-                retry.baseDelay(), retry.multiplier(), retry.maxDelay(), retry.jitterFactor());
+                retry.baseDelay() != null
+                        ? retry.baseDelay() : ExponentialBackoffRetryPolicy.DEFAULT_BASE_DELAY,
+                retry.multiplier() != null
+                        ? retry.multiplier() : ExponentialBackoffRetryPolicy.DEFAULT_MULTIPLIER,
+                retry.maxDelay() != null
+                        ? retry.maxDelay() : ExponentialBackoffRetryPolicy.DEFAULT_MAX_DELAY,
+                retry.jitterFactor() != null
+                        ? retry.jitterFactor() : ExponentialBackoffRetryPolicy.DEFAULT_JITTER_FACTOR);
     }
 
     @Bean
@@ -83,23 +90,40 @@ public class QueueConfiguration {
         return Clock.systemUTC();
     }
 
+    /**
+     * Only knobs that are actually set in the properties reach the builder; everything else keeps
+     * the engine's default, so those numbers live in exactly one place. A blank worker id means
+     * "generate one" — two replicas of the same image must not share an id, or they can release
+     * each other's leases — and the builder already mints a unique one.
+     */
     @Bean
     QueueConfig queueConfig(QueueProperties properties) {
-        // A blank worker id means "generate one". Two replicas of the same image must not share
-        // an id, or they can release each other's leases.
-        String workerId = properties.workerId().isBlank()
-                ? "instance-" + UUID.randomUUID().toString().substring(0, 8)
-                : properties.workerId();
-        return QueueConfig.builder()
-                .workerId(workerId)
-                .concurrency(properties.concurrency())
-                .claimBatchSize(properties.claimBatchSize())
-                .pollInterval(properties.pollInterval())
-                .visibilityTimeout(properties.visibilityTimeout())
-                .maintenanceInterval(properties.maintenanceInterval())
-                .maintenanceBatchSize(properties.maintenanceBatchSize())
-                .shutdownDrainTimeout(properties.shutdownDrainTimeout())
-                .build();
+        QueueConfig.Builder builder = QueueConfig.builder();
+        if (!properties.workerId().isBlank()) {
+            builder.workerId(properties.workerId());
+        }
+        if (properties.concurrency() != null) {
+            builder.concurrency(properties.concurrency());
+        }
+        if (properties.claimBatchSize() != null) {
+            builder.claimBatchSize(properties.claimBatchSize());
+        }
+        if (properties.pollInterval() != null) {
+            builder.pollInterval(properties.pollInterval());
+        }
+        if (properties.visibilityTimeout() != null) {
+            builder.visibilityTimeout(properties.visibilityTimeout());
+        }
+        if (properties.maintenanceInterval() != null) {
+            builder.maintenanceInterval(properties.maintenanceInterval());
+        }
+        if (properties.maintenanceBatchSize() != null) {
+            builder.maintenanceBatchSize(properties.maintenanceBatchSize());
+        }
+        if (properties.shutdownDrainTimeout() != null) {
+            builder.shutdownDrainTimeout(properties.shutdownDrainTimeout());
+        }
+        return builder.build();
     }
 
     /**

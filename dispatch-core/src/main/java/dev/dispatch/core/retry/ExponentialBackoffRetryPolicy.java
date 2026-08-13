@@ -24,6 +24,11 @@ import java.util.random.RandomGenerator;
  */
 public final class ExponentialBackoffRetryPolicy implements RetryPolicy {
 
+    public static final Duration DEFAULT_BASE_DELAY = Duration.ofSeconds(1);
+    public static final double DEFAULT_MULTIPLIER = 2.0;
+    public static final Duration DEFAULT_MAX_DELAY = Duration.ofMinutes(1);
+    public static final double DEFAULT_JITTER_FACTOR = 0.5;
+
     private final Duration baseDelay;
     private final double multiplier;
     private final Duration maxDelay;
@@ -65,7 +70,7 @@ public final class ExponentialBackoffRetryPolicy implements RetryPolicy {
     /** 1s base, doubling, capped at 1 minute, 50% jitter. Sensible for a demo queue. */
     public static ExponentialBackoffRetryPolicy defaults() {
         return new ExponentialBackoffRetryPolicy(
-                Duration.ofSeconds(1), 2.0, Duration.ofMinutes(1), 0.5);
+                DEFAULT_BASE_DELAY, DEFAULT_MULTIPLIER, DEFAULT_MAX_DELAY, DEFAULT_JITTER_FACTOR);
     }
 
     @Override

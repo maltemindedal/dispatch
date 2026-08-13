@@ -31,11 +31,6 @@ public final class InMemoryJobHandlerRegistry implements JobHandlerRegistry {
         return this;
     }
 
-    public InMemoryJobHandlerRegistry unregister(String type) {
-        handlers.remove(type);
-        return this;
-    }
-
     @Override
     public Optional<JobHandler> lookup(String type) {
         return Optional.ofNullable(handlers.get(type));

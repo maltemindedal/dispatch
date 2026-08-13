@@ -1,7 +1,6 @@
 package dev.dispatch.core.engine;
 
 import dev.dispatch.core.job.JobState;
-import java.util.EnumMap;
 import java.util.Map;
 
 /**
@@ -44,10 +43,8 @@ public record QueueStats(
 
     static QueueStats of(String workerId, Map<JobState, Long> depthByState, long totalJobs,
             QueueMetrics metrics) {
-        Map<JobState, Long> depth = new EnumMap<>(JobState.class);
-        for (JobState state : JobState.values()) {
-            depth.put(state, depthByState.getOrDefault(state, 0L));
-        }
+        Map<JobState, Long> depth = JobState.zeroCounts();
+        depth.putAll(depthByState);
         return new QueueStats(
                 workerId,
                 depth,

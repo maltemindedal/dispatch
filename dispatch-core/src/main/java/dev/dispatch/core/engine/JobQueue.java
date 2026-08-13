@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,12 +145,14 @@ public final class JobQueue implements AutoCloseable {
         return config;
     }
 
-    public JobStore store() {
-        return store;
+    /** True when a handler is registered for {@code type}, i.e. this queue can execute it. */
+    public boolean hasHandlerFor(String type) {
+        return registry.lookup(type).isPresent();
     }
 
-    public JobHandlerRegistry registry() {
-        return registry;
+    /** The job types this queue has handlers for. */
+    public Set<String> registeredJobTypes() {
+        return registry.registeredTypes();
     }
 
     public boolean isRunning() {

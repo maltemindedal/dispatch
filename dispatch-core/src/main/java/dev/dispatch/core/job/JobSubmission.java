@@ -43,16 +43,4 @@ public record JobSubmission(
     public static JobSubmission delayed(String type, String payload, Duration delay, Instant now) {
         return new JobSubmission(type, payload, DEFAULT_PRIORITY, DEFAULT_MAX_RETRIES, now.plus(delay));
     }
-
-    public JobSubmission withPriority(int newPriority) {
-        return new JobSubmission(type, payload, newPriority, maxRetries, scheduledAt);
-    }
-
-    public JobSubmission withMaxRetries(int newMaxRetries) {
-        return new JobSubmission(type, payload, priority, newMaxRetries, scheduledAt);
-    }
-
-    public JobSubmission withScheduledAt(Instant newScheduledAt) {
-        return new JobSubmission(type, payload, priority, maxRetries, newScheduledAt);
-    }
 }

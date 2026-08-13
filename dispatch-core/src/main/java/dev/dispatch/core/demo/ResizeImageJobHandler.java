@@ -3,7 +3,6 @@ package dev.dispatch.core.demo;
 import dev.dispatch.core.handler.JobContext;
 import dev.dispatch.core.handler.JobHandler;
 import java.time.Duration;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,8 +22,7 @@ public final class ResizeImageJobHandler implements JobHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ResizeImageJobHandler.class);
 
-    private final Duration minDuration;
-    private final Duration maxDuration;
+    private final DurationRange duration;
     private final LongAdder resized = new LongAdder();
 
     /** 50-400ms per image. */
@@ -33,16 +31,12 @@ public final class ResizeImageJobHandler implements JobHandler {
     }
 
     public ResizeImageJobHandler(Duration minDuration, Duration maxDuration) {
-        if (maxDuration.compareTo(minDuration) < 0) {
-            throw new IllegalArgumentException("maxDuration must be >= minDuration");
-        }
-        this.minDuration = minDuration;
-        this.maxDuration = maxDuration;
+        this.duration = new DurationRange(minDuration, maxDuration);
     }
 
     @Override
     public void handle(JobContext context) throws Exception {
-        long millis = durationMillis();
+        long millis = duration.randomMillis();
         log.debug("Resizing image for job {} (simulated {}ms)", context.jobId(), millis);
 
         // Sleep rather than burn CPU: a real resize would be CPU-bound and would pin its carrier
@@ -62,11 +56,5 @@ public final class ResizeImageJobHandler implements JobHandler {
 
     public long resizedCount() {
         return resized.sum();
-    }
-
-    private long durationMillis() {
-        long min = minDuration.toMillis();
-        long max = maxDuration.toMillis();
-        return min == max ? min : ThreadLocalRandom.current().nextLong(min, max + 1);
     }
 }

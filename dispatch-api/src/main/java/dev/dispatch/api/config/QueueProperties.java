@@ -7,8 +7,10 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * Everything under {@code dispatch.*} in application.yml.
  *
- * <p>Defaults live here rather than in the YAML so that a stripped configuration still boots into
- * something sensible.
+ * <p>The engine knobs and retry settings are deliberately nullable: null means "not configured",
+ * and {@link QueueConfiguration} then falls back to the engine's own defaults
+ * ({@code QueueConfig.Builder}, {@code ExponentialBackoffRetryPolicy}). Keeping a second copy of
+ * the numbers here would let the two silently drift apart.
  *
  * @param store              which {@code JobStore} to wire up
  * @param workerId           this instance's identity in {@code locked_by}; leave blank to
@@ -27,13 +29,13 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record QueueProperties(
         @DefaultValue("JDBC") StoreType store,
         @DefaultValue("") String workerId,
-        @DefaultValue("16") int concurrency,
-        @DefaultValue("8") int claimBatchSize,
-        @DefaultValue("250ms") Duration pollInterval,
-        @DefaultValue("5m") Duration visibilityTimeout,
-        @DefaultValue("1s") Duration maintenanceInterval,
-        @DefaultValue("500") int maintenanceBatchSize,
-        @DefaultValue("30s") Duration shutdownDrainTimeout,
+        Integer concurrency,
+        Integer claimBatchSize,
+        Duration pollInterval,
+        Duration visibilityTimeout,
+        Duration maintenanceInterval,
+        Integer maintenanceBatchSize,
+        Duration shutdownDrainTimeout,
         @DefaultValue Retry retry,
         @DefaultValue("true") boolean demoHandlers) {
 
@@ -52,9 +54,9 @@ public record QueueProperties(
      * @param jitterFactor 0 for none, 1 for full jitter, 0.5 keeps at least half the nominal delay
      */
     public record Retry(
-            @DefaultValue("1s") Duration baseDelay,
-            @DefaultValue("2.0") double multiplier,
-            @DefaultValue("1m") Duration maxDelay,
-            @DefaultValue("0.5") double jitterFactor) {
+            Duration baseDelay,
+            Double multiplier,
+            Duration maxDelay,
+            Double jitterFactor) {
     }
 }
