@@ -33,10 +33,13 @@ services:
       - "-c"
       - "log_min_duration_statement=500"
 
-  # A second application instance is not defined here on purpose: run two of them yourself with
-  #   SERVER_PORT=8080 ./gradlew :dispatch-api:bootRun --args='--spring.profiles.active=postgres'
-  #   SERVER_PORT=8081 ./gradlew :dispatch-api:bootRun --args='--spring.profiles.active=postgres'
+  # A second application instance is not defined here on purpose: build the jar once and run two
+  # of them yourself (two bootRun invocations would contend on the same Gradle project lock):
+  #   ./gradlew :dispatch-api:bootJar
+  #   java -jar dispatch-api/build/libs/dispatch-api-0.1.0-SNAPSHOT.jar --spring.profiles.active=postgres --server.port=8080
+  #   java -jar dispatch-api/build/libs/dispatch-api-0.1.0-SNAPSHOT.jar --spring.profiles.active=postgres --server.port=8081
   # and watch SELECT ... FOR UPDATE SKIP LOCKED keep them from processing the same job twice.
+  # The walkthrough lives in docs/guides/running-multiple-instances.md.
 
 volumes:
   dispatch-pgdata:
