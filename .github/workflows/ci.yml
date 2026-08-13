@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Build-and-test only, so a read-only token is enough.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR supersedes the running build.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Satisfies the build's Java 21 toolchain directly, so the foojay resolver
+      # doesn't have to download one.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          # Verifies the committed gradle-wrapper.jar against known-good checksums.
+          validate-wrappers: true
+
+      # No `services:` block: the dispatch-postgres and dispatch-api integration
+      # tests use Testcontainers, which starts its own PostgreSQL on the runner's
+      # Docker daemon. dispatch-core needs no Docker at all.
+      - name: Build and test
+        run: ./gradlew build
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/test/
+            **/build/test-results/test/
+          retention-days: 14
