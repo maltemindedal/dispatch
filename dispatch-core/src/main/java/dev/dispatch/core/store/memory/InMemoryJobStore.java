@@ -9,7 +9,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -173,7 +172,7 @@ public final class InMemoryJobStore implements JobStore {
         lock.lock();
         try {
             Job job = jobs.get(id);
-            if (job == null || (job.state() != JobState.PENDING && job.state() != JobState.SCHEDULED)) {
+            if (job == null || !job.state().isCancellable()) {
                 return false;
             }
             jobs.remove(id);
@@ -201,10 +200,7 @@ public final class InMemoryJobStore implements JobStore {
 
     @Override
     public Map<JobState, Long> countsByState() {
-        Map<JobState, Long> counts = new EnumMap<>(JobState.class);
-        for (JobState state : JobState.values()) {
-            counts.put(state, 0L);
-        }
+        Map<JobState, Long> counts = JobState.zeroCounts();
         jobs.values().forEach(job -> counts.merge(job.state(), 1L, Long::sum));
         return counts;
     }
@@ -229,9 +225,7 @@ public final class InMemoryJobStore implements JobStore {
         lock.lock();
         try {
             Job job = jobs.get(id);
-            // The lease check is the whole point: a worker that stalled past its visibility
-            // timeout must not overwrite whoever legitimately took the job over.
-            if (job == null || job.state() != JobState.RUNNING || !workerId.equals(job.lockedBy())) {
+            if (job == null || !job.leaseHeldBy(workerId)) {
                 return Optional.empty();
             }
             Job updated = transition.apply(job);

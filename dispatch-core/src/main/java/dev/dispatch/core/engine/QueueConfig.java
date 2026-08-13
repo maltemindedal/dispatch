@@ -72,21 +72,9 @@ public record QueueConfig(
         return new Builder();
     }
 
-    public Builder toBuilder() {
-        return new Builder()
-                .workerId(workerId)
-                .concurrency(concurrency)
-                .claimBatchSize(claimBatchSize)
-                .pollInterval(pollInterval)
-                .visibilityTimeout(visibilityTimeout)
-                .maintenanceInterval(maintenanceInterval)
-                .maintenanceBatchSize(maintenanceBatchSize)
-                .shutdownDrainTimeout(shutdownDrainTimeout);
-    }
-
     /** Mutable builder; the record itself stays immutable. */
     public static final class Builder {
-        private String workerId = defaultWorkerId();
+        private String workerId = generateWorkerId();
         private int concurrency = 16;
         private int claimBatchSize = 8;
         private Duration pollInterval = Duration.ofMillis(250);
@@ -143,9 +131,11 @@ public record QueueConfig(
 
     /**
      * Hostname-ish plus a random suffix. The suffix matters: two containers from the same image
-     * would otherwise share a worker id and could steal each other's leases.
+     * would otherwise share a worker id and could steal each other's leases. This is the one
+     * place worker ids are minted — anything wiring the engine up should call it rather than
+     * invent its own scheme.
      */
-    private static String defaultWorkerId() {
+    public static String generateWorkerId() {
         String host = System.getenv().getOrDefault("HOSTNAME", "worker");
         return host + "-" + UUID.randomUUID().toString().substring(0, 8);
     }

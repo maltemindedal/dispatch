@@ -36,14 +36,6 @@ public record JobFilter(JobState state, String type, int limit, int offset) {
         return new JobFilter(null, type, DEFAULT_LIMIT, 0);
     }
 
-    public JobFilter withState(JobState newState) {
-        return new JobFilter(newState, type, limit, offset);
-    }
-
-    public JobFilter withType(String newType) {
-        return new JobFilter(state, newType, limit, offset);
-    }
-
     public JobFilter withLimit(int newLimit) {
         return new JobFilter(state, type, newLimit, offset);
     }

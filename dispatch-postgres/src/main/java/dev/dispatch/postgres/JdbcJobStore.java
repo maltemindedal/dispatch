@@ -15,13 +15,14 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -107,8 +108,16 @@ public final class JdbcJobStore implements JobStore {
             "UPDATE jobs SET attempt = ?, state = ?, scheduled_at = ?, updated_at = ?,"
             + " locked_until = ?, locked_by = ?, last_error = ? WHERE id = ?";
 
+    /** The state list is derived from {@link JobState#isCancellable()}, the single home of that rule. */
     private static final String DELETE_CANCELLABLE_SQL =
-            "DELETE FROM jobs WHERE id = ? AND state IN ('PENDING', 'SCHEDULED')";
+            "DELETE FROM jobs WHERE id = ? AND state IN (" + cancellableStatesSqlList() + ")";
+
+    private static String cancellableStatesSqlList() {
+        return Arrays.stream(JobState.values())
+                .filter(JobState::isCancellable)
+                .map(state -> "'" + state.name() + "'")
+                .collect(Collectors.joining(", "));
+    }
 
     private final DataSource dataSource;
 
@@ -277,10 +286,7 @@ public final class JdbcJobStore implements JobStore {
     @Override
     public Map<JobState, Long> countsByState() {
         return inTransaction(connection -> {
-            Map<JobState, Long> counts = new EnumMap<>(JobState.class);
-            for (JobState state : JobState.values()) {
-                counts.put(state, 0L);
-            }
+            Map<JobState, Long> counts = JobState.zeroCounts();
             try (PreparedStatement statement = connection.prepareStatement(
                     "SELECT state, COUNT(*) FROM jobs GROUP BY state");
                     ResultSet resultSet = statement.executeQuery()) {
@@ -327,7 +333,7 @@ public final class JdbcJobStore implements JobStore {
             }
             Job job = existing.get();
             // Refuse writes from a worker whose lease was reclaimed while it was still running.
-            if (job.state() != JobState.RUNNING || !workerId.equals(job.lockedBy())) {
+            if (!job.leaseHeldBy(workerId)) {
                 return Optional.empty();
             }
             Job updated = transition.apply(job);

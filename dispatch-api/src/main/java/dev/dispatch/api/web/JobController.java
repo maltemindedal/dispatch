@@ -52,8 +52,8 @@ public class JobController {
     public ResponseEntity<JobResponse> submit(@Valid @RequestBody SubmitJobRequest request) {
         // Reject unknown types at submission rather than letting the job retry its way to the
         // dead-letter state. A typo in a job type is a client error, and it should read like one.
-        if (queue.registry().lookup(request.type()).isEmpty()) {
-            throw new UnknownJobTypeException(request.type(), queue.registry().registeredTypes());
+        if (!queue.hasHandlerFor(request.type())) {
+            throw new UnknownJobTypeException(request.type(), queue.registeredJobTypes());
         }
 
         JobSubmission submission = new JobSubmission(

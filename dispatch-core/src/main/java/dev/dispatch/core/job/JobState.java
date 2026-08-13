@@ -90,13 +90,20 @@ public enum JobState {
         }
     }
 
-    /** True when no further work will ever happen without operator intervention. */
-    public boolean isTerminal() {
-        return this == COMPLETED || this == DEAD;
+    /**
+     * True when a job in this state may be cancelled — i.e. it has not started. Once a worker
+     * holds the lease there is nothing safe to cancel from outside.
+     */
+    public boolean isCancellable() {
+        return this == PENDING || this == SCHEDULED;
     }
 
-    /** True when the job is waiting for a worker or a clock, i.e. still owed execution. */
-    public boolean isPendingWork() {
-        return this == PENDING || this == SCHEDULED || this == FAILED;
+    /** A mutable count map with every state present at zero, so absent states read as 0, not null. */
+    public static Map<JobState, Long> zeroCounts() {
+        Map<JobState, Long> counts = new EnumMap<>(JobState.class);
+        for (JobState state : values()) {
+            counts.put(state, 0L);
+        }
+        return counts;
     }
 }

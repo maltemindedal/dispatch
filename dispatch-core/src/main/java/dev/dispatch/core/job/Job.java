@@ -101,13 +101,12 @@ public record Job(
     }
 
     /**
-     * General validated transition. Prefer the named helpers below, which also maintain the
-     * bookkeeping fields (lease, attempt counter, error) that belong to each transition.
+     * True while {@code workerId} holds this job's visibility lease. Stores check this before
+     * recording any result: a worker that stalled past its visibility timeout must not overwrite
+     * whoever legitimately took the job over.
      */
-    public Job transitionTo(JobState next, Instant now) {
-        state.requireTransitionTo(next);
-        return new Job(id, type, payload, priority, maxRetries, attempt, next,
-                scheduledAt, createdAt, now, lockedUntil, lockedBy, lastError);
+    public boolean leaseHeldBy(String workerId) {
+        return state == JobState.RUNNING && workerId.equals(lockedBy);
     }
 
     /** PENDING -> RUNNING: takes a visibility lease and counts the attempt. */

@@ -91,11 +91,19 @@ class JobStateTest {
     }
 
     @Test
-    @DisplayName("terminal and pending-work classifications")
-    void classification() {
-        assertThat(EnumSet.allOf(JobState.class).stream().filter(JobState::isTerminal).toList())
-                .containsExactlyInAnyOrder(JobState.COMPLETED, JobState.DEAD);
-        assertThat(EnumSet.allOf(JobState.class).stream().filter(JobState::isPendingWork).toList())
-                .containsExactlyInAnyOrder(JobState.PENDING, JobState.SCHEDULED, JobState.FAILED);
+    @DisplayName("only jobs that have not started are cancellable")
+    void cancellableClassification() {
+        assertThat(EnumSet.allOf(JobState.class).stream().filter(JobState::isCancellable).toList())
+                .containsExactlyInAnyOrder(JobState.PENDING, JobState.SCHEDULED);
+    }
+
+    @Test
+    @DisplayName("zeroCounts covers every state and is mutable")
+    void zeroCountsCoversEveryState() {
+        var counts = JobState.zeroCounts();
+        assertThat(counts).hasSize(JobState.values().length);
+        assertThat(counts.values()).allMatch(count -> count == 0L);
+        counts.merge(JobState.PENDING, 1L, Long::sum);
+        assertThat(counts.get(JobState.PENDING)).isEqualTo(1L);
     }
 }

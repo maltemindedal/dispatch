@@ -25,8 +25,7 @@ public final class SendEmailJobHandler implements JobHandler {
     private static final Logger log = LoggerFactory.getLogger(SendEmailJobHandler.class);
 
     private final double failureRate;
-    private final Duration minLatency;
-    private final Duration maxLatency;
+    private final DurationRange latency;
     private final LongAdder sent = new LongAdder();
     private final LongAdder attempted = new LongAdder();
 
@@ -39,12 +38,8 @@ public final class SendEmailJobHandler implements JobHandler {
         if (failureRate < 0.0 || failureRate > 1.0) {
             throw new IllegalArgumentException("failureRate must be within [0, 1]: " + failureRate);
         }
-        if (maxLatency.compareTo(minLatency) < 0) {
-            throw new IllegalArgumentException("maxLatency must be >= minLatency");
-        }
         this.failureRate = failureRate;
-        this.minLatency = minLatency;
-        this.maxLatency = maxLatency;
+        this.latency = new DurationRange(minLatency, maxLatency);
     }
 
     @Override
@@ -57,7 +52,7 @@ public final class SendEmailJobHandler implements JobHandler {
         }
 
         // Blocking sleep on a virtual thread: cheap, and it yields the carrier thread.
-        Thread.sleep(randomLatencyMillis());
+        Thread.sleep(latency.randomMillis());
 
         if (ThreadLocalRandom.current().nextDouble() < failureRate) {
             throw new java.io.IOException(
@@ -75,11 +70,5 @@ public final class SendEmailJobHandler implements JobHandler {
 
     public long attemptCount() {
         return attempted.sum();
-    }
-
-    private long randomLatencyMillis() {
-        long min = minLatency.toMillis();
-        long max = maxLatency.toMillis();
-        return min == max ? min : ThreadLocalRandom.current().nextLong(min, max + 1);
     }
 }

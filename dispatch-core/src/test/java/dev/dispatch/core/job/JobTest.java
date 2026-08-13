@@ -110,6 +110,20 @@ class JobTest {
     }
 
     @Test
+    @DisplayName("the lease is held only by the claiming worker, and only while RUNNING")
+    void leaseHeldByClaimingWorkerOnly() {
+        Job pending = pendingJob(3);
+        assertThat(pending.leaseHeldBy("worker-1")).isFalse();
+
+        Job running = pending.claimedBy("worker-1", NOW, LEASE);
+        assertThat(running.leaseHeldBy("worker-1")).isTrue();
+        assertThat(running.leaseHeldBy("worker-2")).isFalse();
+
+        assertThat(running.completed(NOW).leaseHeldBy("worker-1")).isFalse();
+        assertThat(running.leaseExpired(NOW.plus(LEASE)).leaseHeldBy("worker-1")).isFalse();
+    }
+
+    @Test
     @DisplayName("reviving a dead job hands back a full retry budget")
     void reviveResetsAttempts() {
         Job dead = pendingJob(3).claimedBy("w", NOW, LEASE).deadLettered("gave up", NOW);

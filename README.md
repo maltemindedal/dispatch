@@ -184,9 +184,9 @@ and drains the workers. A real `SIGTERM` under load logs it plainly:
 
 ```
 GracefulShutdown : Commencing graceful shutdown. Waiting for active requests to complete
-WorkerPool       : Worker pool instance-e59ff4c1 shutting down: no longer claiming,
+WorkerPool       : Worker pool worker-e59ff4c1 shutting down: no longer claiming,
                    draining 8 in-flight job(s), deadline PT30S
-WorkerPool       : Worker pool instance-e59ff4c1 stopped (clean drain: true)
+WorkerPool       : Worker pool worker-e59ff4c1 stopped (clean drain: true)
 ```
 
 ### Schema creation is a race, and `IF NOT EXISTS` doesn't fix it
@@ -253,7 +253,7 @@ curl -s localhost:8080/stats | jq
 
 ```json
 {
-  "workerId": "instance-3f2a91bc",
+  "workerId": "worker-3f2a91bc",
   "queueDepth": { "PENDING": 12, "SCHEDULED": 3, "RUNNING": 4,
                   "COMPLETED": 981, "FAILED": 2, "DEAD": 7 },
   "totalJobs": 1009,
@@ -357,7 +357,7 @@ orphaned jobs once their visibility leases expire.
 ./gradlew :dispatch-core:test          # engine only, no Docker
 ```
 
-178 tests, all green, no Docker needed for `:dispatch-core:test`. The ones that carry weight:
+180 tests, all green, no Docker needed for `:dispatch-core:test`. The ones that carry weight:
 
 - **`JobStoreContract`** — one suite, run against all three stores (in-memory, H2, PostgreSQL).
   Every store must claim exclusively, order by priority then age, reject writes from a worker that
