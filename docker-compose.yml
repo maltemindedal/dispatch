@@ -1,0 +1,42 @@
+# PostgreSQL for the `postgres` Spring profile.
+#
+#   docker compose up -d
+#   ./gradlew :dispatch-api:bootRun --args='--spring.profiles.active=postgres'
+#
+# The application creates its own schema on startup, so there is nothing to run by hand.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: dispatch-postgres
+    environment:
+      POSTGRES_DB: dispatch
+      POSTGRES_USER: dispatch
+      POSTGRES_PASSWORD: dispatch
+    ports:
+      - "5432:5432"
+    volumes:
+      - dispatch-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Wait for real readiness rather than for the port to open; PostgreSQL briefly accepts
+      # connections during init and then restarts, which is exactly when a starting app connects.
+      test: ["CMD-SHELL", "pg_isready -U dispatch -d dispatch"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    command:
+      # The queue leans on row locks, and a stuck lock should surface as an error rather than as a
+      # worker that hangs forever.
+      - "postgres"
+      - "-c"
+      - "lock_timeout=10s"
+      - "-c"
+      - "log_min_duration_statement=500"
+
+  # A second application instance is not defined here on purpose: run two of them yourself with
+  #   SERVER_PORT=8080 ./gradlew :dispatch-api:bootRun --args='--spring.profiles.active=postgres'
+  #   SERVER_PORT=8081 ./gradlew :dispatch-api:bootRun --args='--spring.profiles.active=postgres'
+  # and watch SELECT ... FOR UPDATE SKIP LOCKED keep them from processing the same job twice.
+
+volumes:
+  dispatch-pgdata:

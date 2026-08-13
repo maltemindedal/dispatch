@@ -1,0 +1,14 @@
+# PostgreSQL, as started by docker-compose.yml. Run several instances against this and the
+# SELECT ... FOR UPDATE SKIP LOCKED claim keeps them from stepping on each other.
+spring:
+  datasource:
+    url: ${DISPATCH_DB_URL:jdbc:postgresql://localhost:5432/dispatch}
+    driver-class-name: org.postgresql.Driver
+    username: ${DISPATCH_DB_USER:dispatch}
+    password: ${DISPATCH_DB_PASSWORD:dispatch}
+    hikari:
+      # Needs headroom over `concurrency`: the dispatcher, the maintenance sweeper and every
+      # finishing handler all want a connection, and starving them stalls the queue.
+      maximum-pool-size: 24
+      # Hikari takes plain milliseconds here, not a Spring Duration — "10s" fails to bind.
+      connection-timeout: 10000

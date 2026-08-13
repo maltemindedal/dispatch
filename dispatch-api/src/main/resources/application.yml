@@ -1,0 +1,60 @@
+spring:
+  application:
+    name: dispatch
+
+  # No profile on the command line means local development, which means H2.
+  profiles:
+    default: dev
+
+  # Handle HTTP requests on virtual threads too, matching the worker pool. Nothing in the engine
+  # depends on this — it just keeps the whole application consistent about how it uses threads.
+  threads:
+    virtual:
+      enabled: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+server:
+  # On SIGTERM, stop accepting requests and let in-flight ones finish before the context closes.
+  # The queue's own draining then happens when the JobQueue bean is destroyed.
+  shutdown: graceful
+
+  error:
+    include-message: always
+
+dispatch:
+  # jdbc (shared and durable) or memory (process-local, lost on restart)
+  store: jdbc
+
+  # Blank means "generate a unique one at startup". Set this only if you have a stable per-replica
+  # identity; two instances sharing a worker id can release each other's leases.
+  worker-id: ""
+
+  concurrency: 16
+  claim-batch-size: 8
+  poll-interval: 250ms
+
+  # Must comfortably exceed your slowest handler, or healthy jobs get run twice.
+  visibility-timeout: 5m
+
+  maintenance-interval: 1s
+  maintenance-batch-size: 500
+
+  # How long a shutdown waits for in-flight jobs before interrupting them.
+  shutdown-drain-timeout: 30s
+
+  retry:
+    base-delay: 1s
+    multiplier: 2.0
+    max-delay: 1m
+    jitter-factor: 0.5
+
+  # Register the bundled send-email and resize-image simulators. Turn off in a real deployment.
+  demo-handlers: true
+
+logging:
+  level:
+    dev.dispatch: INFO
