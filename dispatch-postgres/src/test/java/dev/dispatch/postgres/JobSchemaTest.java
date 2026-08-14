@@ -137,6 +137,28 @@ class JobSchemaTest {
                 assertThat(sql).contains("idx_jobs_claim"));
     }
 
+    @Test
+    @DisplayName("the state CHECK constraint lists exactly the JobState enum")
+    void stateCheckMatchesTheEnum() {
+        // The lifecycle is enforced in the domain model and repeated in DDL to keep the database
+        // honest; this pins the two lists together so neither can drift.
+        String createTable = JobSchema.readStatements().get(0);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("state\\s+IN\\s*\\(([^)]*)\\)", java.util.regex.Pattern.DOTALL)
+                .matcher(createTable);
+
+        assertThat(matcher.find()).as("CHECK (state IN (...)) present").isTrue();
+        java.util.Set<String> statesInSql = java.util.Arrays.stream(matcher.group(1).split(","))
+                .map(name -> name.trim().replace("'", ""))
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.Set<String> statesInEnum = java.util.Arrays
+                .stream(dev.dispatch.core.job.JobState.values())
+                .map(Enum::name)
+                .collect(java.util.stream.Collectors.toSet());
+
+        assertThat(statesInSql).isEqualTo(statesInEnum);
+    }
+
     private static long totalRows(JdbcJobStore store) {
         return store.countsByState().values().stream().mapToLong(Long::longValue).sum();
     }
