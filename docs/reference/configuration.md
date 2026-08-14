@@ -14,7 +14,7 @@ exactly one place, and `application.yml` restates them.
 | --- | --- | --- | --- |
 | `store` | `jdbc` \| `memory` | `jdbc` | Which `JobStore` backs the queue. `memory` is process-local, lost on restart, and logs a warning to that effect. |
 | `worker-id` | string | `""` (generate) | This instance's identity in `locked_by`. Blank means "generate a unique one at startup" (hostname-ish plus random suffix), which is what you want in containers. If set, it must be unique per process — two instances sharing an id can release each other's leases. |
-| `concurrency` | int ≥ 1 | `16` | Maximum jobs in flight on this instance. Also sizes the claim-gating semaphore, so the engine never claims work it has no room to run. |
+| `concurrency` | int ≥ 1 | `16` | Maximum jobs in flight on this instance. Also sizes the claim-capacity gate, so the engine never claims work it has no room to run. |
 | `claim-batch-size` | int ≥ 1 | `8` | Jobs claimed per database round trip. |
 | `poll-interval` | duration | `250ms` | How long an idle dispatcher parks before polling again. Submissions on this instance wake it early, so this only bounds the pickup latency of work created elsewhere. |
 | `visibility-timeout` | duration | `5m` | How long a claim stays exclusive before the job is deemed abandoned. Must comfortably exceed your slowest handler, or healthy jobs get run twice. |

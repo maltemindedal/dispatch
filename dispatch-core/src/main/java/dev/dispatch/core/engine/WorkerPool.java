@@ -16,7 +16,6 @@ import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -38,12 +37,11 @@ import org.slf4j.LoggerFactory;
  * OS threads.
  *
  * <h2>Backpressure</h2>
- * A {@link Semaphore} sized to {@code concurrency} gates everything. The dispatcher acquires a
- * permit before it claims — blocking when the pool is saturated — then opportunistically drains
- * whatever else is free to fill out one batch, and hands unused permits straight back. So the
- * engine never claims work it has no room to run, which matters: a claimed job is invisible to
- * every other instance until its lease expires, and claiming greedily would park work on a busy
- * node while idle nodes starve.
+ * A {@link ClaimCapacity} sized to {@code concurrency} gates everything. The dispatcher reserves
+ * a claim budget before it claims — blocking when the pool is saturated — capped at the claim
+ * batch size, and hands unused permits straight back. So the engine never claims work it has no
+ * room to run, which matters: a claimed job is invisible to every other instance until its lease
+ * expires, and claiming greedily would park work on a busy node while idle nodes starve.
  *
  * <h2>Delivery semantics</h2>
  * At-least-once. A worker can finish a job and die before recording the result; the visibility
@@ -68,7 +66,7 @@ public final class WorkerPool implements AutoCloseable {
     private final QueueConfig config;
     private final QueueMetrics metrics;
     private final Clock clock;
-    private final Semaphore capacity;
+    private final ClaimCapacity capacity;
     private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
 
     private volatile ExecutorService executor;
@@ -88,7 +86,7 @@ public final class WorkerPool implements AutoCloseable {
         this.config = Objects.requireNonNull(config, "config");
         this.metrics = Objects.requireNonNull(metrics, "metrics");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.capacity = new Semaphore(config.concurrency());
+        this.capacity = new ClaimCapacity(config.concurrency());
     }
 
     /** Starts the dispatcher. Idempotent-ish: starting twice is a programming error and throws. */
@@ -151,13 +149,11 @@ public final class WorkerPool implements AutoCloseable {
      */
     private boolean claimAndDispatchOnce() throws InterruptedException {
         // Block until there is room for at least one job; this is the backpressure valve.
-        capacity.acquire();
+        int budget = capacity.reserve(config.claimBatchSize());
         if (!accepting) {
-            capacity.release();
+            capacity.release(budget);
             return false;
         }
-        // Take whatever else happens to be free so one query can fill a batch.
-        int budget = 1 + Math.min(config.claimBatchSize() - 1, capacity.drainPermits());
 
         List<Job> claimed;
         try {
@@ -181,13 +177,13 @@ public final class WorkerPool implements AutoCloseable {
                     try {
                         runJob(job);
                     } finally {
-                        capacity.release();
+                        capacity.release(1);
                     }
                 });
             } catch (RejectedExecutionException e) {
                 // Shutdown raced with this claim. Leave the job RUNNING and let its visibility
                 // lease expire — the sweeper on this or another instance will pick it back up.
-                capacity.release();
+                capacity.release(1);
                 log.warn("Job {} claimed but not dispatched (pool shutting down); "
                         + "it will be reclaimed after the visibility timeout", job.id());
             }
