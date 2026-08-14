@@ -1,6 +1,7 @@
 package dev.dispatch.core.store;
 
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import java.time.Duration;
@@ -30,6 +31,9 @@ import java.util.UUID;
  *       That is what stops a worker that stalled past its visibility timeout from stomping on the
  *       worker that legitimately took the job over.</li>
  *   <li><b>Atomic transitions.</b> Each method is a single atomic unit against concurrent callers.</li>
+ *   <li><b>One failure vocabulary.</b> Storage failures — a lost connection, a broken schema —
+ *       surface as {@link JobStoreException}, whatever the underlying technology. "No such job"
+ *       and "wrong state" are answers, not failures, and arrive as return values.</li>
  * </ol>
  *
  * <p>All methods take {@code now} explicitly rather than reading the clock, so tests can drive
@@ -79,21 +83,30 @@ public interface JobStore extends AutoCloseable {
     int reclaimExpiredLeases(Instant now, int limit);
 
     /**
-     * Cancels a job that has not started: only PENDING and SCHEDULED jobs can be cancelled, and
-     * cancelling removes the row (the lifecycle deliberately has no CANCELLED state).
+     * Cancels a job that has not started — {@link JobState#isCancellable()} is the rule — and
+     * removes the row (the lifecycle deliberately has no CANCELLED state). The decision and the
+     * removal happen in one atomic step.
      *
-     * @return true if a job was removed
+     * @return {@link JobActionResult.Done} with the removed snapshot, or why not
      */
-    boolean cancel(UUID id);
+    JobActionResult cancel(UUID id);
 
-    /** DEAD -> PENDING with a fresh retry budget. Empty if the job is missing or is not DEAD. */
-    Optional<Job> requeueDeadJob(UUID id, Instant now);
+    /**
+     * DEAD -> PENDING with a fresh retry budget. The decision and the transition happen in one
+     * atomic step.
+     *
+     * @return {@link JobActionResult.Done} with the revived snapshot, or why not
+     */
+    JobActionResult requeueDeadJob(UUID id, Instant now);
 
-    /** Current queue depth per state. Missing entries count as zero. */
+    /** Current queue depth per state. Every state is present; states with no rows map to zero. */
     Map<JobState, Long> countsByState();
 
-    /** Total rows, across every state. */
-    long count();
+    /**
+     * Removes every job, regardless of state. For test harnesses and operator resets that own the
+     * store outright; production code has no business calling it.
+     */
+    void deleteAll();
 
     @Override
     default void close() {

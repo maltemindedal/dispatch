@@ -4,14 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.zaxxer.hikari.HikariDataSource;
+import dev.dispatch.core.job.JobState;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,7 +73,7 @@ class JobSchemaTest {
         JobSchema.initialize(dataSource);
 
         JdbcJobStore store = new JdbcJobStore(dataSource);
-        assertThat(store.count()).isZero();
+        assertThat(totalRows(store)).isZero();
     }
 
     @Test
@@ -81,7 +87,7 @@ class JobSchemaTest {
         assertThatCode(() -> JobSchema.initialize(dataSource)).doesNotThrowAnyException();
 
         // Re-running must not wipe anything: IF NOT EXISTS, not DROP AND CREATE.
-        assertThat(store.count()).isEqualTo(1);
+        assertThat(totalRows(store)).isEqualTo(1);
     }
 
     @Test
@@ -119,7 +125,7 @@ class JobSchemaTest {
         }
 
         JdbcJobStore store = new JdbcJobStore(dataSource);
-        assertThat(store.count()).isZero();
+        assertThat(totalRows(store)).isZero();
     }
 
     @Test
@@ -135,5 +141,30 @@ class JobSchemaTest {
         assertThat(statements.get(0)).startsWith("CREATE TABLE IF NOT EXISTS jobs");
         assertThat(statements).anySatisfy(sql ->
                 assertThat(sql).contains("idx_jobs_claim"));
+    }
+
+    @Test
+    @DisplayName("the state CHECK constraint lists exactly the JobState enum")
+    void stateCheckMatchesTheEnum() {
+        // The lifecycle is enforced in the domain model and repeated in DDL to keep the database
+        // honest; this pins the two lists together so neither can drift.
+        String createTable = JobSchema.readStatements().get(0);
+        Matcher matcher = Pattern
+                .compile("state\\s+IN\\s*\\(([^)]*)\\)", Pattern.DOTALL)
+                .matcher(createTable);
+
+        assertThat(matcher.find()).as("CHECK (state IN (...)) present").isTrue();
+        Set<String> statesInSql = Arrays.stream(matcher.group(1).split(","))
+                .map(name -> name.trim().replace("'", ""))
+                .collect(Collectors.toSet());
+        Set<String> statesInEnum = Arrays.stream(JobState.values())
+                .map(Enum::name)
+                .collect(Collectors.toSet());
+
+        assertThat(statesInSql).isEqualTo(statesInEnum);
+    }
+
+    private static long totalRows(JdbcJobStore store) {
+        return store.countsByState().values().stream().mapToLong(Long::longValue).sum();
     }
 }

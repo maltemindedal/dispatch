@@ -34,27 +34,28 @@ public class QueueConfiguration {
     private static final Logger log = LoggerFactory.getLogger(QueueConfiguration.class);
 
     /**
-     * The durable store: PostgreSQL in production, H2 under the dev profile. The same class serves
-     * both — see {@code JdbcJobStore} for why the SQL is portable.
+     * Picks the adapter for the store seam from the one typed {@code dispatch.store} property.
+     * A typo fails at property binding with the valid values listed, not at bean resolution.
+     *
+     * <p>The JDBC store serves PostgreSQL in production and H2 under the dev profile alike — see
+     * {@code JdbcJobStore} for why the SQL is portable. The DataSource is resolved lazily so the
+     * in-memory choice never touches it.
      */
     @Bean
-    @ConditionalOnProperty(name = "dispatch.store", havingValue = "jdbc", matchIfMissing = true)
-    JobStore jdbcJobStore(DataSource dataSource) {
-        JobSchema.initialize(dataSource);
-        log.info("Job queue backed by JDBC store");
-        return new JdbcJobStore(dataSource);
-    }
-
-    /**
-     * The process-local store. Nothing above this line changes when you switch — which is the
-     * point of putting persistence behind an interface.
-     */
-    @Bean
-    @ConditionalOnProperty(name = "dispatch.store", havingValue = "memory")
-    JobStore inMemoryJobStore() {
-        log.warn("Job queue backed by the IN-MEMORY store: jobs are lost on restart and are not "
-                + "shared with other instances");
-        return new InMemoryJobStore();
+    JobStore jobStore(QueueProperties properties, ObjectProvider<DataSource> dataSource) {
+        return switch (properties.store()) {
+            case JDBC -> {
+                DataSource source = dataSource.getObject();
+                JobSchema.initialize(source);
+                log.info("Job queue backed by JDBC store");
+                yield new JdbcJobStore(source);
+            }
+            case MEMORY -> {
+                log.warn("Job queue backed by the IN-MEMORY store: jobs are lost on restart and "
+                        + "are not shared with other instances");
+                yield new InMemoryJobStore();
+            }
+        };
     }
 
     /**
@@ -70,19 +71,12 @@ public class QueueConfiguration {
         return registry;
     }
 
-    /** Unset retry properties fall back to the policy's own defaults. */
+    /** Unset retry properties keep the policy's own defaults; {@code of} owns that rule. */
     @Bean
     RetryPolicy retryPolicy(QueueProperties properties) {
         QueueProperties.Retry retry = properties.retry();
-        return new ExponentialBackoffRetryPolicy(
-                retry.baseDelay() != null
-                        ? retry.baseDelay() : ExponentialBackoffRetryPolicy.DEFAULT_BASE_DELAY,
-                retry.multiplier() != null
-                        ? retry.multiplier() : ExponentialBackoffRetryPolicy.DEFAULT_MULTIPLIER,
-                retry.maxDelay() != null
-                        ? retry.maxDelay() : ExponentialBackoffRetryPolicy.DEFAULT_MAX_DELAY,
-                retry.jitterFactor() != null
-                        ? retry.jitterFactor() : ExponentialBackoffRetryPolicy.DEFAULT_JITTER_FACTOR);
+        return ExponentialBackoffRetryPolicy.of(
+                retry.baseDelay(), retry.multiplier(), retry.maxDelay(), retry.jitterFactor());
     }
 
     @Bean
@@ -91,39 +85,21 @@ public class QueueConfiguration {
     }
 
     /**
-     * Only knobs that are actually set in the properties reach the builder; everything else keeps
-     * the engine's default, so those numbers live in exactly one place. A blank worker id means
-     * "generate one" — two replicas of the same image must not share an id, or they can release
-     * each other's leases — and the builder already mints a unique one.
+     * A straight hand-over: the builder itself treats null (and a blank worker id) as "keep the
+     * engine's default", so the defaults live in exactly one place — {@code QueueConfig.Builder}.
      */
     @Bean
     QueueConfig queueConfig(QueueProperties properties) {
-        QueueConfig.Builder builder = QueueConfig.builder();
-        if (!properties.workerId().isBlank()) {
-            builder.workerId(properties.workerId());
-        }
-        if (properties.concurrency() != null) {
-            builder.concurrency(properties.concurrency());
-        }
-        if (properties.claimBatchSize() != null) {
-            builder.claimBatchSize(properties.claimBatchSize());
-        }
-        if (properties.pollInterval() != null) {
-            builder.pollInterval(properties.pollInterval());
-        }
-        if (properties.visibilityTimeout() != null) {
-            builder.visibilityTimeout(properties.visibilityTimeout());
-        }
-        if (properties.maintenanceInterval() != null) {
-            builder.maintenanceInterval(properties.maintenanceInterval());
-        }
-        if (properties.maintenanceBatchSize() != null) {
-            builder.maintenanceBatchSize(properties.maintenanceBatchSize());
-        }
-        if (properties.shutdownDrainTimeout() != null) {
-            builder.shutdownDrainTimeout(properties.shutdownDrainTimeout());
-        }
-        return builder.build();
+        return QueueConfig.builder()
+                .workerId(properties.workerId())
+                .concurrency(properties.concurrency())
+                .claimBatchSize(properties.claimBatchSize())
+                .pollInterval(properties.pollInterval())
+                .visibilityTimeout(properties.visibilityTimeout())
+                .maintenanceInterval(properties.maintenanceInterval())
+                .maintenanceBatchSize(properties.maintenanceBatchSize())
+                .shutdownDrainTimeout(properties.shutdownDrainTimeout())
+                .build();
     }
 
     /**

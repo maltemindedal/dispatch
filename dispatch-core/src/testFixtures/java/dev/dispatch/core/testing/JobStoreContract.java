@@ -3,6 +3,7 @@ package dev.dispatch.core.testing;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobFilter;
@@ -18,6 +19,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,7 +34,8 @@ import org.junit.jupiter.api.Test;
  * PostgreSQL store are not merely swappable in principle, they are held to the same suite in
  * practice — including the claim-exclusivity test, which is the property the whole design rests on.
  *
- * <p>Subclasses supply a fresh, empty store from {@link #createStore()}.
+ * <p>Subclasses supply a fresh, empty store from {@link #createStore()} and an id-injected
+ * variant from {@link #createStore(Supplier)}.
  */
 public abstract class JobStoreContract {
 
@@ -45,6 +48,9 @@ public abstract class JobStoreContract {
 
     /** @return an empty store; called before every test */
     protected abstract JobStore createStore();
+
+    /** @return an empty store whose new-job ids come from {@code ids} */
+    protected abstract JobStore createStore(Supplier<UUID> ids);
 
     @BeforeEach
     void setUpContract() {
@@ -415,32 +421,43 @@ public abstract class JobStoreContract {
     class OperatorActions {
 
         @Test
-        @DisplayName("cancel removes a job that has not started")
+        @DisplayName("cancel removes a job that has not started and returns its final snapshot")
         void cancelRemovesPendingJob() {
             Job pending = insertDue();
             Job scheduled = store.insert(new JobSubmission("send-email", "{}", 0, 3,
                     now().plus(Duration.ofMinutes(5))), now());
 
-            assertThat(store.cancel(pending.id())).isTrue();
-            assertThat(store.cancel(scheduled.id())).isTrue();
+            assertThat(store.cancel(pending.id()))
+                    .isInstanceOfSatisfying(JobActionResult.Done.class,
+                            done -> assertThat(done.job().id()).isEqualTo(pending.id()));
+            assertThat(store.cancel(scheduled.id()))
+                    .isInstanceOf(JobActionResult.Done.class);
             assertThat(store.find(pending.id())).isEmpty();
             assertThat(store.find(scheduled.id())).isEmpty();
         }
 
         @Test
-        @DisplayName("cancel refuses a job a worker is already running")
+        @DisplayName("cancel refuses a running job, reporting the state it observed")
         void cancelRefusesRunningJob() {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
 
-            assertThat(store.cancel(job.id())).isFalse();
+            assertThat(store.cancel(job.id()))
+                    .isInstanceOfSatisfying(JobActionResult.WrongState.class, refusal -> {
+                        assertThat(refusal.observed().state()).isEqualTo(JobState.RUNNING);
+                        assertThat(refusal.allowedStates())
+                                .containsExactlyInAnyOrder(JobState.PENDING, JobState.SCHEDULED);
+                    });
             assertThat(reload(job).state()).isEqualTo(JobState.RUNNING);
         }
 
         @Test
-        @DisplayName("cancel on an unknown id reports false")
+        @DisplayName("cancel on an unknown id reports not found")
         void cancelUnknownJob() {
-            assertThat(store.cancel(UUID.randomUUID())).isFalse();
+            UUID id = UUID.randomUUID();
+            assertThat(store.cancel(id))
+                    .isInstanceOfSatisfying(JobActionResult.NotFound.class,
+                            missing -> assertThat(missing.id()).isEqualTo(id));
         }
 
         @Test
@@ -451,22 +468,41 @@ public abstract class JobStoreContract {
             store.deadLetter(job.id(), WORKER, "gave up", now());
             clock.advance(Duration.ofMinutes(1));
 
-            Optional<Job> revived = store.requeueDeadJob(job.id(), now());
-
-            assertThat(revived).isPresent();
-            assertThat(revived.get().state()).isEqualTo(JobState.PENDING);
-            assertThat(revived.get().attempt()).isZero();
-            assertThat(revived.get().scheduledAt()).isEqualTo(now());
+            assertThat(store.requeueDeadJob(job.id(), now()))
+                    .isInstanceOfSatisfying(JobActionResult.Done.class, done -> {
+                        assertThat(done.job().state()).isEqualTo(JobState.PENDING);
+                        assertThat(done.job().attempt()).isZero();
+                        assertThat(done.job().scheduledAt()).isEqualTo(now());
+                    });
             assertThat(store.claim(WORKER, 10, LEASE, now())).hasSize(1);
         }
 
         @Test
-        @DisplayName("only DEAD jobs can be revived")
+        @DisplayName("deleteAll empties the store, whatever the states")
+        void deleteAllEmptiesTheStore() {
+            insertDue();
+            store.insert(new JobSubmission("send-email", "{}", 0, 3,
+                    now().plus(Duration.ofMinutes(5))), now());
+            store.claim(WORKER, 1, LEASE, now());
+
+            store.deleteAll();
+
+            assertThat(store.countsByState().values()).containsOnly(0L);
+            assertThat(store.list(new JobFilter(null, null, 10, 0))).isEmpty();
+        }
+
+        @Test
+        @DisplayName("only DEAD jobs can be revived, and the refusal says why")
         void requeueRefusesLiveJob() {
             Job job = insertDue();
 
-            assertThat(store.requeueDeadJob(job.id(), now())).isEmpty();
-            assertThat(store.requeueDeadJob(UUID.randomUUID(), now())).isEmpty();
+            assertThat(store.requeueDeadJob(job.id(), now()))
+                    .isInstanceOfSatisfying(JobActionResult.WrongState.class, refusal -> {
+                        assertThat(refusal.observed().state()).isEqualTo(JobState.PENDING);
+                        assertThat(refusal.allowedStates()).containsExactly(JobState.DEAD);
+                    });
+            assertThat(store.requeueDeadJob(UUID.randomUUID(), now()))
+                    .isInstanceOf(JobActionResult.NotFound.class);
         }
     }
 
@@ -492,8 +528,9 @@ public abstract class JobStoreContract {
                     .containsEntry(JobState.RUNNING, 1L)
                     .containsEntry(JobState.COMPLETED, 0L)
                     .containsEntry(JobState.FAILED, 0L)
-                    .containsEntry(JobState.DEAD, 0L);
-            assertThat(store.count()).isEqualTo(4);
+                    .containsEntry(JobState.DEAD, 0L)
+                    .as("every state is present, zero-filled")
+                    .hasSize(JobState.values().length);
             assertThat(running.id()).isNotNull();
         }
 
@@ -540,6 +577,34 @@ public abstract class JobStoreContract {
                     .flatMap(List::stream).map(Job::id).toList())
                     .hasSize(5)
                     .doesNotHaveDuplicates();
+        }
+    }
+
+    // ------------------------------------------------------------ seam symmetry
+
+    @Nested
+    @DisplayName("seam symmetry")
+    class SeamSymmetry {
+
+        @Test
+        @DisplayName("job ids come from the injected id source")
+        void idsComeFromTheInjectedSource() throws Exception {
+            UUID pinned = UUID.fromString("00000000-0000-0000-0000-000000000042");
+            try (JobStore deterministic = createStore(() -> pinned)) {
+                Job job = deterministic.insert(
+                        new JobSubmission("send-email", "{}", 0, 3, null), now());
+
+                assertThat(job.id()).isEqualTo(pinned);
+                assertThat(deterministic.find(pinned)).isPresent();
+            }
+        }
+
+        @Test
+        @DisplayName("close is safe to call twice")
+        void closeIsIdempotent() throws Exception {
+            JobStore closeable = createStore();
+            closeable.close();
+            closeable.close();
         }
     }
 }

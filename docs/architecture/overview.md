@@ -74,8 +74,9 @@ and it spends its life blocked in a database call — none of the reasons to pre
 thread apply. Using one everywhere merely because they exist is how you end up not knowing what
 they're for.
 
-A `Semaphore` sized to `concurrency` gates claiming, so the engine never claims work it has no
-room to run. This matters more than it looks: a claimed job is invisible to every other instance
+A claim-capacity gate sized to `concurrency` — one permit per job in flight, reserved before
+each claim and conserved across every dispatch path — gates claiming, so the engine never claims
+work it has no room to run. This matters more than it looks: a claimed job is invisible to every other instance
 until its lease expires, so a greedy instance parks work it can't start while its idle peers
 starve.
 

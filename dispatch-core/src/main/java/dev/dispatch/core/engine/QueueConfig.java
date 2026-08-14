@@ -72,7 +72,13 @@ public record QueueConfig(
         return new Builder();
     }
 
-    /** Mutable builder; the record itself stays immutable. */
+    /**
+     * Mutable builder; the record itself stays immutable.
+     *
+     * <p>Every setter treats {@code null} — and, for the worker id, blank — as "not configured":
+     * the field keeps its default. That is what lets an adapter binding external configuration
+     * hand its values straight over, and it puts the defaults in exactly one place, here.
+     */
     public static final class Builder {
         private String workerId = generateWorkerId();
         private int concurrency = 16;
@@ -83,43 +89,60 @@ public record QueueConfig(
         private int maintenanceBatchSize = 500;
         private Duration shutdownDrainTimeout = Duration.ofSeconds(30);
 
+        /** Null or blank keeps the generated id — replicas must never share one. */
         public Builder workerId(String value) {
-            this.workerId = value;
+            if (value != null && !value.isBlank()) {
+                this.workerId = value;
+            }
             return this;
         }
 
-        public Builder concurrency(int value) {
-            this.concurrency = value;
+        public Builder concurrency(Integer value) {
+            if (value != null) {
+                this.concurrency = value;
+            }
             return this;
         }
 
-        public Builder claimBatchSize(int value) {
-            this.claimBatchSize = value;
+        public Builder claimBatchSize(Integer value) {
+            if (value != null) {
+                this.claimBatchSize = value;
+            }
             return this;
         }
 
         public Builder pollInterval(Duration value) {
-            this.pollInterval = value;
+            if (value != null) {
+                this.pollInterval = value;
+            }
             return this;
         }
 
         public Builder visibilityTimeout(Duration value) {
-            this.visibilityTimeout = value;
+            if (value != null) {
+                this.visibilityTimeout = value;
+            }
             return this;
         }
 
         public Builder maintenanceInterval(Duration value) {
-            this.maintenanceInterval = value;
+            if (value != null) {
+                this.maintenanceInterval = value;
+            }
             return this;
         }
 
-        public Builder maintenanceBatchSize(int value) {
-            this.maintenanceBatchSize = value;
+        public Builder maintenanceBatchSize(Integer value) {
+            if (value != null) {
+                this.maintenanceBatchSize = value;
+            }
             return this;
         }
 
         public Builder shutdownDrainTimeout(Duration value) {
-            this.shutdownDrainTimeout = value;
+            if (value != null) {
+                this.shutdownDrainTimeout = value;
+            }
             return this;
         }
 

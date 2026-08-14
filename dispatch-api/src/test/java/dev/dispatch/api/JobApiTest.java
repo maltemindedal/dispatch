@@ -14,7 +14,6 @@ import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobStore;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -72,7 +71,7 @@ class JobApiTest {
      */
     @BeforeEach
     void resetStore() {
-        ((InMemoryJobStore) store).clear();
+        store.deleteAll();
     }
 
     @AfterEach

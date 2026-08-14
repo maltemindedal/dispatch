@@ -5,6 +5,7 @@ import static org.awaitility.Awaitility.await;
 
 import dev.dispatch.core.handler.InMemoryJobHandlerRegistry;
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.memory.InMemoryJobStore;
@@ -119,7 +120,7 @@ class ScheduledJobTest {
     void scheduledJobCanBeCancelled() {
         Job job = queue.submitDelayed("record", "never", Duration.ofHours(1));
 
-        assertThat(queue.cancel(job.id())).isTrue();
+        assertThat(queue.cancel(job.id())).isInstanceOf(JobActionResult.Done.class);
 
         clock.advance(Duration.ofHours(2));
         await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(5))
