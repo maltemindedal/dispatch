@@ -8,9 +8,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * Everything under {@code dispatch.*} in application.yml.
  *
  * <p>The engine knobs and retry settings are deliberately nullable: null means "not configured",
- * and {@link QueueConfiguration} then falls back to the engine's own defaults
- * ({@code QueueConfig.Builder}, {@code ExponentialBackoffRetryPolicy}). Keeping a second copy of
- * the numbers here would let the two silently drift apart.
+ * and the engine's own types treat null as "keep my default" ({@code QueueConfig.Builder},
+ * {@code ExponentialBackoffRetryPolicy.of}). Keeping a second copy of the numbers here would let
+ * the two silently drift apart.
  *
  * @param store              which {@code JobStore} to wire up
  * @param workerId           this instance's identity in {@code locked_by}; leave blank to

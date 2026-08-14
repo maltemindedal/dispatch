@@ -24,10 +24,10 @@ import java.util.random.RandomGenerator;
  */
 public final class ExponentialBackoffRetryPolicy implements RetryPolicy {
 
-    public static final Duration DEFAULT_BASE_DELAY = Duration.ofSeconds(1);
-    public static final double DEFAULT_MULTIPLIER = 2.0;
-    public static final Duration DEFAULT_MAX_DELAY = Duration.ofMinutes(1);
-    public static final double DEFAULT_JITTER_FACTOR = 0.5;
+    private static final Duration DEFAULT_BASE_DELAY = Duration.ofSeconds(1);
+    private static final double DEFAULT_MULTIPLIER = 2.0;
+    private static final Duration DEFAULT_MAX_DELAY = Duration.ofMinutes(1);
+    private static final double DEFAULT_JITTER_FACTOR = 0.5;
 
     private final Duration baseDelay;
     private final double multiplier;
@@ -69,8 +69,20 @@ public final class ExponentialBackoffRetryPolicy implements RetryPolicy {
 
     /** 1s base, doubling, capped at 1 minute, 50% jitter. Sensible for a demo queue. */
     public static ExponentialBackoffRetryPolicy defaults() {
+        return of(null, null, null, null);
+    }
+
+    /**
+     * Null-tolerant factory for adapters binding external configuration: any null falls back to
+     * this policy's default, so the curve's numbers live here and nowhere else.
+     */
+    public static ExponentialBackoffRetryPolicy of(
+            Duration baseDelay, Double multiplier, Duration maxDelay, Double jitterFactor) {
         return new ExponentialBackoffRetryPolicy(
-                DEFAULT_BASE_DELAY, DEFAULT_MULTIPLIER, DEFAULT_MAX_DELAY, DEFAULT_JITTER_FACTOR);
+                baseDelay != null ? baseDelay : DEFAULT_BASE_DELAY,
+                multiplier != null ? multiplier : DEFAULT_MULTIPLIER,
+                maxDelay != null ? maxDelay : DEFAULT_MAX_DELAY,
+                jitterFactor != null ? jitterFactor : DEFAULT_JITTER_FACTOR);
     }
 
     @Override
