@@ -31,6 +31,9 @@ import java.util.UUID;
  *       That is what stops a worker that stalled past its visibility timeout from stomping on the
  *       worker that legitimately took the job over.</li>
  *   <li><b>Atomic transitions.</b> Each method is a single atomic unit against concurrent callers.</li>
+ *   <li><b>One failure vocabulary.</b> Storage failures — a lost connection, a broken schema —
+ *       surface as {@link JobStoreException}, whatever the underlying technology. "No such job"
+ *       and "wrong state" are answers, not failures, and arrive as return values.</li>
  * </ol>
  *
  * <p>All methods take {@code now} explicitly rather than reading the clock, so tests can drive
@@ -98,6 +101,12 @@ public interface JobStore extends AutoCloseable {
 
     /** Current queue depth per state. Every state is present; states with no rows map to zero. */
     Map<JobState, Long> countsByState();
+
+    /**
+     * Removes every job, regardless of state. For test harnesses and operator resets that own the
+     * store outright; production code has no business calling it.
+     */
+    void deleteAll();
 
     @Override
     default void close() {

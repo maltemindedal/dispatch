@@ -6,6 +6,7 @@ import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobFilter;
 import dev.dispatch.core.store.JobStore;
+import dev.dispatch.core.store.JobStoreException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -22,6 +23,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
@@ -111,12 +113,19 @@ public final class JdbcJobStore implements JobStore {
     private static final String DELETE_BY_ID_SQL = "DELETE FROM jobs WHERE id = ?";
 
     private final DataSource dataSource;
+    private final Supplier<UUID> idGenerator;
 
     /**
      * @param dataSource pooled and owned by the caller; this store never closes it
      */
     public JdbcJobStore(DataSource dataSource) {
+        this(dataSource, UUID::randomUUID);
+    }
+
+    /** Overload taking the id source, so tests can make ids predictable. */
+    public JdbcJobStore(DataSource dataSource, Supplier<UUID> idGenerator) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
+        this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator");
     }
 
     /** Convenience: apply the schema, then build a store over the same DataSource. */
@@ -129,7 +138,7 @@ public final class JdbcJobStore implements JobStore {
 
     @Override
     public Job insert(JobSubmission submission, Instant now) {
-        Job job = Job.newJob(UUID.randomUUID(), submission, now);
+        Job job = Job.newJob(idGenerator.get(), submission, now);
         return inTransaction(connection -> {
             try (PreparedStatement statement = connection.prepareStatement(INSERT_SQL)) {
                 statement.setObject(1, job.id());
@@ -304,7 +313,7 @@ public final class JdbcJobStore implements JobStore {
     }
 
 
-    /** Removes every row. Intended for tests and local resets. */
+    @Override
     public void deleteAll() {
         inTransaction(connection -> {
             try (PreparedStatement statement = connection.prepareStatement("DELETE FROM jobs")) {

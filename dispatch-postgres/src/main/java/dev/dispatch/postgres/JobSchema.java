@@ -1,5 +1,6 @@
 package dev.dispatch.postgres;
 
+import dev.dispatch.core.store.JobStoreException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;

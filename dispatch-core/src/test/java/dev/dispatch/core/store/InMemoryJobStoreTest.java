@@ -16,4 +16,9 @@ class InMemoryJobStoreTest extends JobStoreContract {
     protected JobStore createStore() {
         return new InMemoryJobStore();
     }
+
+    @Override
+    protected JobStore createStore(java.util.function.Supplier<java.util.UUID> ids) {
+        return new InMemoryJobStore(ids);
+    }
 }

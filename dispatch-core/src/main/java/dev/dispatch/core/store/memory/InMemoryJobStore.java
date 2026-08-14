@@ -213,8 +213,8 @@ public final class InMemoryJobStore implements JobStore {
         return counts;
     }
 
-    /** Drops every job. Test convenience; there is deliberately no equivalent on the interface. */
-    public void clear() {
+    @Override
+    public void deleteAll() {
         lock.lock();
         try {
             jobs.clear();

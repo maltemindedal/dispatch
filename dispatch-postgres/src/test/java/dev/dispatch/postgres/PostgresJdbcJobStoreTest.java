@@ -41,6 +41,12 @@ class PostgresJdbcJobStoreTest extends JobStoreContract {
         return store;
     }
 
+    @Override
+    protected JobStore createStore(java.util.function.Supplier<java.util.UUID> ids) {
+        createStore();
+        return new JdbcJobStore(dataSource, ids);
+    }
+
     @AfterAll
     static void closePool() {
         if (dataSource != null) {

@@ -38,6 +38,12 @@ class H2JdbcJobStoreTest extends JobStoreContract {
         return store;
     }
 
+    @Override
+    protected JobStore createStore(java.util.function.Supplier<UUID> ids) {
+        createStore();
+        return new JdbcJobStore(dataSource, ids);
+    }
+
     @AfterAll
     static void closePool() {
         if (dataSource != null) {

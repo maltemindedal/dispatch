@@ -19,6 +19,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,7 +34,8 @@ import org.junit.jupiter.api.Test;
  * PostgreSQL store are not merely swappable in principle, they are held to the same suite in
  * practice — including the claim-exclusivity test, which is the property the whole design rests on.
  *
- * <p>Subclasses supply a fresh, empty store from {@link #createStore()}.
+ * <p>Subclasses supply a fresh, empty store from {@link #createStore()} and an id-injected
+ * variant from {@link #createStore(Supplier)}.
  */
 public abstract class JobStoreContract {
 
@@ -46,6 +48,9 @@ public abstract class JobStoreContract {
 
     /** @return an empty store; called before every test */
     protected abstract JobStore createStore();
+
+    /** @return an empty store whose new-job ids come from {@code ids} */
+    protected abstract JobStore createStore(Supplier<UUID> ids);
 
     @BeforeEach
     void setUpContract() {
@@ -473,6 +478,20 @@ public abstract class JobStoreContract {
         }
 
         @Test
+        @DisplayName("deleteAll empties the store, whatever the states")
+        void deleteAllEmptiesTheStore() {
+            insertDue();
+            store.insert(new JobSubmission("send-email", "{}", 0, 3,
+                    now().plus(Duration.ofMinutes(5))), now());
+            store.claim(WORKER, 1, LEASE, now());
+
+            store.deleteAll();
+
+            assertThat(store.countsByState().values()).containsOnly(0L);
+            assertThat(store.list(new JobFilter(null, null, 10, 0))).isEmpty();
+        }
+
+        @Test
         @DisplayName("only DEAD jobs can be revived, and the refusal says why")
         void requeueRefusesLiveJob() {
             Job job = insertDue();
@@ -558,6 +577,34 @@ public abstract class JobStoreContract {
                     .flatMap(List::stream).map(Job::id).toList())
                     .hasSize(5)
                     .doesNotHaveDuplicates();
+        }
+    }
+
+    // ------------------------------------------------------------ seam symmetry
+
+    @Nested
+    @DisplayName("seam symmetry")
+    class SeamSymmetry {
+
+        @Test
+        @DisplayName("job ids come from the injected id source")
+        void idsComeFromTheInjectedSource() throws Exception {
+            UUID pinned = UUID.fromString("00000000-0000-0000-0000-000000000042");
+            try (JobStore deterministic = createStore(() -> pinned)) {
+                Job job = deterministic.insert(
+                        new JobSubmission("send-email", "{}", 0, 3, null), now());
+
+                assertThat(job.id()).isEqualTo(pinned);
+                assertThat(deterministic.find(pinned)).isPresent();
+            }
+        }
+
+        @Test
+        @DisplayName("close is safe to call twice")
+        void closeIsIdempotent() throws Exception {
+            JobStore closeable = createStore();
+            closeable.close();
+            closeable.close();
         }
     }
 }
