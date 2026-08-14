@@ -192,15 +192,24 @@ class ConcurrentInstancesIntegrationTest {
     @DisplayName("a job orphaned by one instance is recovered by the other")
     void orphanedJobIsRecoveredByPeer() {
         Duration visibilityTimeout = Duration.ofSeconds(2);
-        Instance survivor = startInstance("instance-survivor", visibilityTimeout);
 
-        // Simulate an instance that claimed a job and was then killed: the row is RUNNING, held by
-        // a worker id that will never report a result.
+        // Simulate an instance that claimed a job and was then killed: the row is RUNNING, held
+        // by a worker id that will never report a result. Staged before the survivor starts —
+        // a live instance's dispatcher would legitimately race the doomed claim for the row.
         java.time.Instant now = java.time.Instant.now();
-        Job job = survivor.store().insert(
-                new JobSubmission("shared-work", "{\"orphan\":true}", 0, 3, null), now);
-        List<Job> stolen = survivor.store().claim("instance-doomed", 1, visibilityTimeout, now);
-        assertThat(stolen).extracting(Job::id).containsExactly(job.id());
+        Job job;
+        HikariDataSource staging = PostgresTestSupport.pool(POSTGRES, 2);
+        try {
+            JdbcJobStore stagingStore = new JdbcJobStore(staging);
+            job = stagingStore.insert(
+                    new JobSubmission("shared-work", "{\"orphan\":true}", 0, 3, null), now);
+            List<Job> stolen = stagingStore.claim("instance-doomed", 1, visibilityTimeout, now);
+            assertThat(stolen).extracting(Job::id).containsExactly(job.id());
+        } finally {
+            staging.close();
+        }
+
+        Instance survivor = startInstance("instance-survivor", visibilityTimeout);
 
         // No coordination, no failover protocol: the surviving instance's sweeper simply notices
         // the lapsed lease and puts the job back.
