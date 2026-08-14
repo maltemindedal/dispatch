@@ -67,7 +67,7 @@ class JobSchemaTest {
         JobSchema.initialize(dataSource);
 
         JdbcJobStore store = new JdbcJobStore(dataSource);
-        assertThat(store.count()).isZero();
+        assertThat(totalRows(store)).isZero();
     }
 
     @Test
@@ -81,7 +81,7 @@ class JobSchemaTest {
         assertThatCode(() -> JobSchema.initialize(dataSource)).doesNotThrowAnyException();
 
         // Re-running must not wipe anything: IF NOT EXISTS, not DROP AND CREATE.
-        assertThat(store.count()).isEqualTo(1);
+        assertThat(totalRows(store)).isEqualTo(1);
     }
 
     @Test
@@ -119,7 +119,7 @@ class JobSchemaTest {
         }
 
         JdbcJobStore store = new JdbcJobStore(dataSource);
-        assertThat(store.count()).isZero();
+        assertThat(totalRows(store)).isZero();
     }
 
     @Test
@@ -135,5 +135,9 @@ class JobSchemaTest {
         assertThat(statements.get(0)).startsWith("CREATE TABLE IF NOT EXISTS jobs");
         assertThat(statements).anySatisfy(sql ->
                 assertThat(sql).contains("idx_jobs_claim"));
+    }
+
+    private static long totalRows(JdbcJobStore store) {
+        return store.countsByState().values().stream().mapToLong(Long::longValue).sum();
     }
 }

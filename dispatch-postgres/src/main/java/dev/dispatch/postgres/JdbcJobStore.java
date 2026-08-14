@@ -298,16 +298,6 @@ public final class JdbcJobStore implements JobStore {
         });
     }
 
-    @Override
-    public long count() {
-        return inTransaction(connection -> {
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT COUNT(*) FROM jobs");
-                    ResultSet resultSet = statement.executeQuery()) {
-                return resultSet.next() ? resultSet.getLong(1) : 0L;
-            }
-        });
-    }
 
     /** Removes every row. Intended for tests and local resets. */
     public void deleteAll() {

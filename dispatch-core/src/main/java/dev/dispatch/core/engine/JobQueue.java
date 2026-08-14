@@ -134,7 +134,7 @@ public final class JobQueue implements AutoCloseable {
     }
 
     public QueueStats stats() {
-        return QueueStats.of(config.workerId(), store.countsByState(), store.count(), metrics);
+        return new QueueStats(config.workerId(), store.countsByState(), metrics);
     }
 
     public QueueMetrics metrics() {

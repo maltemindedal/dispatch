@@ -492,8 +492,9 @@ public abstract class JobStoreContract {
                     .containsEntry(JobState.RUNNING, 1L)
                     .containsEntry(JobState.COMPLETED, 0L)
                     .containsEntry(JobState.FAILED, 0L)
-                    .containsEntry(JobState.DEAD, 0L);
-            assertThat(store.count()).isEqualTo(4);
+                    .containsEntry(JobState.DEAD, 0L)
+                    .as("every state is present, zero-filled")
+                    .hasSize(JobState.values().length);
             assertThat(running.id()).isNotNull();
         }
 

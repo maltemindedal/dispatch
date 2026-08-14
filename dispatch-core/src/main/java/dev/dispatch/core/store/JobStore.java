@@ -89,11 +89,8 @@ public interface JobStore extends AutoCloseable {
     /** DEAD -> PENDING with a fresh retry budget. Empty if the job is missing or is not DEAD. */
     Optional<Job> requeueDeadJob(UUID id, Instant now);
 
-    /** Current queue depth per state. Missing entries count as zero. */
+    /** Current queue depth per state. Every state is present; states with no rows map to zero. */
     Map<JobState, Long> countsByState();
-
-    /** Total rows, across every state. */
-    long count();
 
     @Override
     default void close() {

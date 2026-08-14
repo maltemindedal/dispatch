@@ -1,5 +1,6 @@
 package dev.dispatch.api.web.dto;
 
+import dev.dispatch.core.engine.QueueMetrics;
 import dev.dispatch.core.engine.QueueStats;
 import dev.dispatch.core.job.JobState;
 import java.util.LinkedHashMap;
@@ -60,22 +61,24 @@ public record StatsResponse(
         for (JobState state : JobState.values()) {
             depth.put(state.name(), stats.depth(state));
         }
+        // The one place engine counters are copied out: the projection onto the HTTP contract.
+        QueueMetrics instance = stats.instance();
         return new StatsResponse(
                 stats.workerId(),
                 depth,
                 stats.totalJobs(),
                 stats.backlog(),
                 new InstanceStats(
-                        stats.submitted(),
-                        stats.claimed(),
-                        stats.succeeded(),
-                        stats.failedAttempts(),
-                        stats.retriesScheduled(),
-                        stats.deadLettered(),
-                        stats.leasesReclaimed(),
-                        stats.leasesLost(),
-                        stats.inFlight(),
-                        stats.failureRate(),
-                        stats.averageExecutionMs()));
+                        instance.submitted(),
+                        instance.claimed(),
+                        instance.succeeded(),
+                        instance.failedAttempts(),
+                        instance.retriesScheduled(),
+                        instance.deadLettered(),
+                        instance.leasesReclaimed(),
+                        instance.leasesLost(),
+                        instance.inFlight(),
+                        instance.failureRate(),
+                        instance.averageExecutionMillis()));
     }
 }

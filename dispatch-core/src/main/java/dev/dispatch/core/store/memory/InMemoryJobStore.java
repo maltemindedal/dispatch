@@ -205,11 +205,6 @@ public final class InMemoryJobStore implements JobStore {
         return counts;
     }
 
-    @Override
-    public long count() {
-        return jobs.size();
-    }
-
     /** Drops every job. Test convenience; there is deliberately no equivalent on the interface. */
     public void clear() {
         lock.lock();

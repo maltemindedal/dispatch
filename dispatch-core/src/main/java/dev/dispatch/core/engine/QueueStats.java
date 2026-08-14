@@ -4,66 +4,33 @@ import dev.dispatch.core.job.JobState;
 import java.util.Map;
 
 /**
- * What {@code GET /stats} answers with.
+ * What {@code GET /stats} answers with: cluster-wide queue depth next to this instance's own
+ * counters, labelled so the two scopes cannot be confused.
  *
- * @param workerId            which instance produced the process-scoped numbers
- * @param depthByState        queue depth per state, read from shared storage (cluster-wide)
- * @param totalJobs           rows in the store, all states
- * @param submitted           jobs enqueued through this instance since start
- * @param claimed             jobs claimed by this instance since start
- * @param succeeded           attempts that completed successfully on this instance
- * @param failedAttempts      attempts that threw on this instance
- * @param retriesScheduled    failures this instance put back on the queue with a backoff
- * @param deadLettered        jobs this instance moved to DEAD
- * @param leasesReclaimed     abandoned leases this instance's sweeper returned to PENDING
- * @param leasesLost          results this instance could not record because it lost the lease
- * @param inFlight            jobs running on this instance right now
- * @param failureRate         failed attempts over finished attempts, in {@code [0, 1]}
- * @param averageExecutionMs  mean handler wall time on this instance
+ * <p>The depth map is a single {@link dev.dispatch.core.store.JobStore#countsByState()} read, so
+ * the derived numbers — {@link #totalJobs()}, {@link #backlog()} — are sums over one snapshot and
+ * always agree with it, rather than coming from separate round trips.
+ *
+ * @param workerId     which instance produced the process-scoped numbers
+ * @param depthByState queue depth per state, read from shared storage (cluster-wide)
+ * @param instance     counters for what this process has done since it started
  */
 public record QueueStats(
         String workerId,
         Map<JobState, Long> depthByState,
-        long totalJobs,
-        long submitted,
-        long claimed,
-        long succeeded,
-        long failedAttempts,
-        long retriesScheduled,
-        long deadLettered,
-        long leasesReclaimed,
-        long leasesLost,
-        int inFlight,
-        double failureRate,
-        double averageExecutionMs) {
+        QueueMetrics instance) {
 
     public QueueStats {
         depthByState = Map.copyOf(depthByState);
     }
 
-    static QueueStats of(String workerId, Map<JobState, Long> depthByState, long totalJobs,
-            QueueMetrics metrics) {
-        Map<JobState, Long> depth = JobState.zeroCounts();
-        depth.putAll(depthByState);
-        return new QueueStats(
-                workerId,
-                depth,
-                totalJobs,
-                metrics.submitted(),
-                metrics.claimed(),
-                metrics.succeeded(),
-                metrics.failedAttempts(),
-                metrics.retriesScheduled(),
-                metrics.deadLettered(),
-                metrics.leasesReclaimed(),
-                metrics.leasesLost(),
-                metrics.inFlight(),
-                metrics.failureRate(),
-                metrics.averageExecutionMillis());
-    }
-
     public long depth(JobState state) {
         return depthByState.getOrDefault(state, 0L);
+    }
+
+    /** Rows in the store, all states: the sum of the depth snapshot. */
+    public long totalJobs() {
+        return depthByState.values().stream().mapToLong(Long::longValue).sum();
     }
 
     /** Jobs still owed execution: PENDING + SCHEDULED + FAILED (awaiting retry). */
