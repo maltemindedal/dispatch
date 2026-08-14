@@ -241,7 +241,8 @@ public final class WorkerPool implements AutoCloseable {
         String error = describe(failure);
         if (failure instanceof UnknownJobTypeException) {
             // Possibly a rolling deploy where another instance already has the handler, so this
-            // is retryable rather than fatal — but it is worth shouting about.
+            // is retryable rather than fatal — but it is worth shouting about. Submission-time
+            // unknowns are refused outright by JobQueue.submit; the split is ADR-0001.
             log.error("No handler for job type '{}' on worker {}; job {} will be retried",
                     job.type(), config.workerId(), job.id());
         } else {

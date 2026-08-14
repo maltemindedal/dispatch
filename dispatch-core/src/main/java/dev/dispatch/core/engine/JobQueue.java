@@ -1,7 +1,9 @@
 package dev.dispatch.core.engine;
 
 import dev.dispatch.core.handler.JobHandlerRegistry;
+import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.retry.ExponentialBackoffRetryPolicy;
 import dev.dispatch.core.retry.RetryPolicy;
@@ -12,7 +14,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,8 +80,16 @@ public final class JobQueue implements AutoCloseable {
     /**
      * Enqueues a job. Returns immediately with the persisted snapshot — PENDING if it is due now,
      * SCHEDULED if it was submitted with a future {@code scheduledAt}.
+     *
+     * @throws UnknownJobTypeException if no handler is registered here for the type — a typo
+     *         should fail at the door, not retry its way to the dead-letter state. A handler
+     *         missing at <em>execution</em> time stays retryable instead (rolling deploys); the
+     *         split is recorded in ADR-0001.
      */
     public Job submit(JobSubmission submission) {
+        if (registry.lookup(submission.type()).isEmpty()) {
+            throw new UnknownJobTypeException(submission.type(), registry.registeredTypes());
+        }
         Job job = store.insert(submission, clock.instant());
         metrics.jobSubmitted();
         // Skip the poll interval for work produced on this instance.
@@ -110,27 +119,29 @@ public final class JobQueue implements AutoCloseable {
     }
 
     /**
-     * Cancels a job that has not started yet. Only PENDING and SCHEDULED jobs qualify — once a
-     * worker holds the lease there is nothing safe to cancel from out here.
-     *
-     * @return true if the job was removed
+     * Cancels a job that has not started yet — once a worker holds the lease there is nothing
+     * safe to cancel from out here. A refusal says why, with the state the store observed in the
+     * same atomic step.
      */
-    public boolean cancel(UUID id) {
-        boolean cancelled = store.cancel(id);
-        if (cancelled) {
+    public JobActionResult cancel(UUID id) {
+        JobActionResult result = store.cancel(id);
+        if (result instanceof JobActionResult.Done) {
             log.debug("Cancelled job {}", id);
         }
-        return cancelled;
+        return result;
     }
 
-    /** Moves a DEAD job back to PENDING with a fresh retry budget. Empty if it was not DEAD. */
-    public Optional<Job> retryDeadJob(UUID id) {
-        Optional<Job> revived = store.requeueDeadJob(id, clock.instant());
-        revived.ifPresent(job -> {
-            log.info("Job {} revived from the dead-letter state", job.id());
+    /**
+     * Moves a DEAD job back to PENDING with a fresh retry budget. A refusal says why, with the
+     * state the store observed in the same atomic step.
+     */
+    public JobActionResult retryDeadJob(UUID id) {
+        JobActionResult result = store.requeueDeadJob(id, clock.instant());
+        if (result instanceof JobActionResult.Done done) {
+            log.info("Job {} revived from the dead-letter state", done.job().id());
             workers.wakeUp();
-        });
-        return revived;
+        }
+        return result;
     }
 
     public QueueStats stats() {
@@ -143,16 +154,6 @@ public final class JobQueue implements AutoCloseable {
 
     public QueueConfig config() {
         return config;
-    }
-
-    /** True when a handler is registered for {@code type}, i.e. this queue can execute it. */
-    public boolean hasHandlerFor(String type) {
-        return registry.lookup(type).isPresent();
-    }
-
-    /** The job types this queue has handlers for. */
-    public Set<String> registeredJobTypes() {
-        return registry.registeredTypes();
     }
 
     public boolean isRunning() {

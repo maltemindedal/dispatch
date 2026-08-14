@@ -3,6 +3,7 @@ package dev.dispatch.core.testing;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobFilter;
@@ -415,32 +416,43 @@ public abstract class JobStoreContract {
     class OperatorActions {
 
         @Test
-        @DisplayName("cancel removes a job that has not started")
+        @DisplayName("cancel removes a job that has not started and returns its final snapshot")
         void cancelRemovesPendingJob() {
             Job pending = insertDue();
             Job scheduled = store.insert(new JobSubmission("send-email", "{}", 0, 3,
                     now().plus(Duration.ofMinutes(5))), now());
 
-            assertThat(store.cancel(pending.id())).isTrue();
-            assertThat(store.cancel(scheduled.id())).isTrue();
+            assertThat(store.cancel(pending.id()))
+                    .isInstanceOfSatisfying(JobActionResult.Done.class,
+                            done -> assertThat(done.job().id()).isEqualTo(pending.id()));
+            assertThat(store.cancel(scheduled.id()))
+                    .isInstanceOf(JobActionResult.Done.class);
             assertThat(store.find(pending.id())).isEmpty();
             assertThat(store.find(scheduled.id())).isEmpty();
         }
 
         @Test
-        @DisplayName("cancel refuses a job a worker is already running")
+        @DisplayName("cancel refuses a running job, reporting the state it observed")
         void cancelRefusesRunningJob() {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
 
-            assertThat(store.cancel(job.id())).isFalse();
+            assertThat(store.cancel(job.id()))
+                    .isInstanceOfSatisfying(JobActionResult.WrongState.class, refusal -> {
+                        assertThat(refusal.observed().state()).isEqualTo(JobState.RUNNING);
+                        assertThat(refusal.allowedStates())
+                                .containsExactlyInAnyOrder(JobState.PENDING, JobState.SCHEDULED);
+                    });
             assertThat(reload(job).state()).isEqualTo(JobState.RUNNING);
         }
 
         @Test
-        @DisplayName("cancel on an unknown id reports false")
+        @DisplayName("cancel on an unknown id reports not found")
         void cancelUnknownJob() {
-            assertThat(store.cancel(UUID.randomUUID())).isFalse();
+            UUID id = UUID.randomUUID();
+            assertThat(store.cancel(id))
+                    .isInstanceOfSatisfying(JobActionResult.NotFound.class,
+                            missing -> assertThat(missing.id()).isEqualTo(id));
         }
 
         @Test
@@ -451,22 +463,27 @@ public abstract class JobStoreContract {
             store.deadLetter(job.id(), WORKER, "gave up", now());
             clock.advance(Duration.ofMinutes(1));
 
-            Optional<Job> revived = store.requeueDeadJob(job.id(), now());
-
-            assertThat(revived).isPresent();
-            assertThat(revived.get().state()).isEqualTo(JobState.PENDING);
-            assertThat(revived.get().attempt()).isZero();
-            assertThat(revived.get().scheduledAt()).isEqualTo(now());
+            assertThat(store.requeueDeadJob(job.id(), now()))
+                    .isInstanceOfSatisfying(JobActionResult.Done.class, done -> {
+                        assertThat(done.job().state()).isEqualTo(JobState.PENDING);
+                        assertThat(done.job().attempt()).isZero();
+                        assertThat(done.job().scheduledAt()).isEqualTo(now());
+                    });
             assertThat(store.claim(WORKER, 10, LEASE, now())).hasSize(1);
         }
 
         @Test
-        @DisplayName("only DEAD jobs can be revived")
+        @DisplayName("only DEAD jobs can be revived, and the refusal says why")
         void requeueRefusesLiveJob() {
             Job job = insertDue();
 
-            assertThat(store.requeueDeadJob(job.id(), now())).isEmpty();
-            assertThat(store.requeueDeadJob(UUID.randomUUID(), now())).isEmpty();
+            assertThat(store.requeueDeadJob(job.id(), now()))
+                    .isInstanceOfSatisfying(JobActionResult.WrongState.class, refusal -> {
+                        assertThat(refusal.observed().state()).isEqualTo(JobState.PENDING);
+                        assertThat(refusal.allowedStates()).containsExactly(JobState.DEAD);
+                    });
+            assertThat(store.requeueDeadJob(UUID.randomUUID(), now()))
+                    .isInstanceOf(JobActionResult.NotFound.class);
         }
     }
 

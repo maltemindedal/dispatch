@@ -1,6 +1,7 @@
 package dev.dispatch.postgres;
 
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobFilter;
@@ -15,14 +16,13 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
-import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,16 +108,7 @@ public final class JdbcJobStore implements JobStore {
             "UPDATE jobs SET attempt = ?, state = ?, scheduled_at = ?, updated_at = ?,"
             + " locked_until = ?, locked_by = ?, last_error = ? WHERE id = ?";
 
-    /** The state list is derived from {@link JobState#isCancellable()}, the single home of that rule. */
-    private static final String DELETE_CANCELLABLE_SQL =
-            "DELETE FROM jobs WHERE id = ? AND state IN (" + cancellableStatesSqlList() + ")";
-
-    private static String cancellableStatesSqlList() {
-        return Arrays.stream(JobState.values())
-                .filter(JobState::isCancellable)
-                .map(state -> "'" + state.name() + "'")
-                .collect(Collectors.joining(", "));
-    }
+    private static final String DELETE_BY_ID_SQL = "DELETE FROM jobs WHERE id = ?";
 
     private final DataSource dataSource;
 
@@ -211,27 +202,41 @@ public final class JdbcJobStore implements JobStore {
     }
 
     @Override
-    public boolean cancel(UUID id) {
-        // A single conditional DELETE: the state predicate is the guard, so there is no window
-        // between checking and deleting for a worker to claim the job in.
+    public JobActionResult cancel(UUID id) {
+        // Lock the row, decide, delete. The row lock closes the check-then-act window — a
+        // claimer's SKIP LOCKED passes over the row while we hold it — and locking first is what
+        // lets a refusal carry the state that was actually observed.
         return inTransaction(connection -> {
-            try (PreparedStatement statement = connection.prepareStatement(DELETE_CANCELLABLE_SQL)) {
-                statement.setObject(1, id);
-                return statement.executeUpdate() == 1;
+            Optional<Job> existing = selectForUpdate(connection, id);
+            if (existing.isEmpty()) {
+                return new JobActionResult.NotFound(id);
             }
+            Job job = existing.get();
+            if (!job.state().isCancellable()) {
+                return new JobActionResult.WrongState(job, JobState.cancellableStates());
+            }
+            try (PreparedStatement statement = connection.prepareStatement(DELETE_BY_ID_SQL)) {
+                statement.setObject(1, id);
+                statement.executeUpdate();
+            }
+            return new JobActionResult.Done(job);
         });
     }
 
     @Override
-    public Optional<Job> requeueDeadJob(UUID id, Instant now) {
+    public JobActionResult requeueDeadJob(UUID id, Instant now) {
         return inTransaction(connection -> {
             Optional<Job> existing = selectForUpdate(connection, id);
-            if (existing.isEmpty() || existing.get().state() != JobState.DEAD) {
-                return Optional.empty();
+            if (existing.isEmpty()) {
+                return new JobActionResult.NotFound(id);
             }
-            Job revived = existing.get().revivedForManualRetry(now);
+            Job job = existing.get();
+            if (job.state() != JobState.DEAD) {
+                return new JobActionResult.WrongState(job, Set.of(JobState.DEAD));
+            }
+            Job revived = job.revivedForManualRetry(now);
             applyUpdates(connection, List.of(revived));
-            return Optional.of(revived);
+            return new JobActionResult.Done(revived);
         });
     }
 

@@ -3,8 +3,8 @@ package dev.dispatch.api.web;
 import dev.dispatch.api.web.dto.JobResponse;
 import dev.dispatch.api.web.dto.SubmitJobRequest;
 import dev.dispatch.core.engine.JobQueue;
-import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobFilter;
@@ -46,16 +46,11 @@ public class JobController {
     /**
      * Enqueues a job.
      *
-     * @return 201 with the created job, or 422 if no handler is registered for the type
+     * @return 201 with the created job, or 422 if no handler is registered for the type (the
+     *         engine refuses unknown types at submission; see ADR-0001)
      */
     @PostMapping
     public ResponseEntity<JobResponse> submit(@Valid @RequestBody SubmitJobRequest request) {
-        // Reject unknown types at submission rather than letting the job retry its way to the
-        // dead-letter state. A typo in a job type is a client error, and it should read like one.
-        if (!queue.hasHandlerFor(request.type())) {
-            throw new UnknownJobTypeException(request.type(), queue.registeredJobTypes());
-        }
-
         JobSubmission submission = new JobSubmission(
                 request.type(),
                 payloadCodec.toStoredPayload(request.payload()),
@@ -101,11 +96,12 @@ public class JobController {
      */
     @PostMapping("/{id}/retry")
     public JobResponse retry(@PathVariable UUID id) {
-        Job existing = queue.find(id).orElseThrow(() -> new JobNotFoundException(id));
-        return queue.retryDeadJob(id)
-                .map(this::toResponse)
-                .orElseThrow(() -> new JobConflictException(
-                        "Only DEAD jobs can be retried; job " + id + " is " + existing.state()));
+        return switch (queue.retryDeadJob(id)) {
+            case JobActionResult.Done done -> toResponse(done.job());
+            case JobActionResult.NotFound missing -> throw new JobNotFoundException(missing.id());
+            case JobActionResult.WrongState refusal ->
+                    throw new JobConflictException(conflict("retried", refusal));
+        };
     }
 
     /**
@@ -116,12 +112,18 @@ public class JobController {
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> cancel(@PathVariable UUID id) {
-        Job existing = queue.find(id).orElseThrow(() -> new JobNotFoundException(id));
-        if (!queue.cancel(id)) {
-            throw new JobConflictException("Only PENDING or SCHEDULED jobs can be cancelled; job "
-                    + id + " is " + existing.state());
-        }
-        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+        return switch (queue.cancel(id)) {
+            case JobActionResult.Done done -> ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+            case JobActionResult.NotFound missing -> throw new JobNotFoundException(missing.id());
+            case JobActionResult.WrongState refusal ->
+                    throw new JobConflictException(conflict("cancelled", refusal));
+        };
+    }
+
+    /** The refusal carries the rule; this only phrases it. */
+    private static String conflict(String action, JobActionResult.WrongState refusal) {
+        return "Job " + refusal.observed().id() + " is " + refusal.observed().state()
+                + " and can only be " + action + " from " + refusal.allowedStates();
     }
 
     private JobResponse toResponse(Job job) {

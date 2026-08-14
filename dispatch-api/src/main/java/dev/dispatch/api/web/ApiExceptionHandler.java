@@ -40,7 +40,10 @@ public class ApiExceptionHandler {
         return problem(HttpStatus.UNPROCESSABLE_ENTITY, "Unknown job type", e.getMessage());
     }
 
-    /** Should be unreachable from the API — every endpoint checks state first — but never a 500. */
+    /**
+     * Unreachable from the endpoints — refusals are decided atomically in the store and arrive as
+     * {@code JobActionResult}, not exceptions — but a backstop is cheaper than a 500.
+     */
     @ExceptionHandler(IllegalJobTransitionException.class)
     ProblemDetail handleIllegalTransition(IllegalJobTransitionException e) {
         log.warn("Illegal job transition surfaced through the API", e);

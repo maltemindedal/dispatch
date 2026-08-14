@@ -1,12 +1,15 @@
 package dev.dispatch.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 
 import dev.dispatch.core.handler.InMemoryJobHandlerRegistry;
 import dev.dispatch.core.handler.JobHandler;
 import dev.dispatch.core.handler.PermanentJobFailureException;
+import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.retry.RetryPolicy;
@@ -186,7 +189,7 @@ class RetryAndDeadLetterTest {
 
         // ...the service comes back, and an operator requeues the job.
         registry.replace("recoverable", context -> { });
-        assertThat(queue.retryDeadJob(job.id())).isPresent();
+        assertThat(queue.retryDeadJob(job.id())).isInstanceOf(JobActionResult.Done.class);
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(store.find(job.id()).orElseThrow().state())
@@ -196,20 +199,35 @@ class RetryAndDeadLetterTest {
     }
 
     @Test
-    @DisplayName("reviving a job that is not dead does nothing")
+    @DisplayName("reviving an unknown job reports not found")
     void revivingLiveJobIsRefused() {
         registry.register("noop", context -> { });
         startQueue(RetryPolicy.immediate());
 
-        assertThat(queue.retryDeadJob(UUID.randomUUID())).isEmpty();
+        assertThat(queue.retryDeadJob(UUID.randomUUID()))
+                .isInstanceOf(JobActionResult.NotFound.class);
     }
 
     @Test
-    @DisplayName("a job type with no registered handler is retried, then dead-lettered")
-    void unknownJobTypeEventuallyDies() {
+    @DisplayName("submitting a job type with no registered handler is refused at the door")
+    void unknownJobTypeIsRefusedAtSubmission() {
         startQueue(RetryPolicy.immediate());
 
-        Job job = queue.submit(new JobSubmission("nobody-handles-this", "{}", 0, 1, null));
+        assertThatThrownBy(() -> queue.submit(new JobSubmission("nobody-handles-this", "{}", 0, 1, null)))
+                .isInstanceOf(UnknownJobTypeException.class)
+                .hasMessageContaining("nobody-handles-this");
+    }
+
+    @Test
+    @DisplayName("a claimed job whose handler is missing here is retried, then dead-lettered")
+    void unknownJobTypeAtExecutionEventuallyDies() {
+        // Another instance submitted this (simulated by inserting straight into the shared
+        // store); this instance claims it without having the handler. Per ADR-0001 that is
+        // retryable — a rolling deploy may put the handler on a peer — until the budget runs out.
+        startQueue(RetryPolicy.immediate());
+
+        Job job = store.insert(new JobSubmission("nobody-handles-this", "{}", 0, 1, null),
+                clock.instant());
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.DEAD));

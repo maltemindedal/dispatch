@@ -16,3 +16,6 @@ synonym.
   reclaims jobs whose lease expired.
 - **Dead letter** — a job whose retry budget is exhausted (state DEAD); revivable only by an
   explicit manual retry.
+- **Refusal** — the engine declining an operator action (cancel, manual retry) with the reason
+  and the state it observed, decided in the same atomic step (`JobActionResult.WrongState` /
+  `NotFound`). Callers phrase refusals; they never re-check the rule.

@@ -171,7 +171,7 @@ Problem documents per RFC 9457, `Content-Type: application/problem+json`:
   "type": "about:blank",
   "title": "Job is in the wrong state",
   "status": 409,
-  "detail": "Only DEAD jobs can be retried; job 5f0c9a3e-... is RUNNING",
+  "detail": "Job 5f0c9a3e-... is RUNNING and can only be retried from [DEAD]",
   "instance": "/jobs/5f0c9a3e-.../retry"
 }
 ```

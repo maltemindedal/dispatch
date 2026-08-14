@@ -1,6 +1,7 @@
 package dev.dispatch.core.store.memory;
 
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobFilter;
@@ -12,6 +13,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -168,31 +170,37 @@ public final class InMemoryJobStore implements JobStore {
     }
 
     @Override
-    public boolean cancel(UUID id) {
+    public JobActionResult cancel(UUID id) {
         lock.lock();
         try {
             Job job = jobs.get(id);
-            if (job == null || !job.state().isCancellable()) {
-                return false;
+            if (job == null) {
+                return new JobActionResult.NotFound(id);
+            }
+            if (!job.state().isCancellable()) {
+                return new JobActionResult.WrongState(job, JobState.cancellableStates());
             }
             jobs.remove(id);
-            return true;
+            return new JobActionResult.Done(job);
         } finally {
             lock.unlock();
         }
     }
 
     @Override
-    public Optional<Job> requeueDeadJob(UUID id, Instant now) {
+    public JobActionResult requeueDeadJob(UUID id, Instant now) {
         lock.lock();
         try {
             Job job = jobs.get(id);
-            if (job == null || job.state() != JobState.DEAD) {
-                return Optional.empty();
+            if (job == null) {
+                return new JobActionResult.NotFound(id);
+            }
+            if (job.state() != JobState.DEAD) {
+                return new JobActionResult.WrongState(job, Set.of(JobState.DEAD));
             }
             Job revived = job.revivedForManualRetry(now);
             jobs.put(id, revived);
-            return Optional.of(revived);
+            return new JobActionResult.Done(revived);
         } finally {
             lock.unlock();
         }
