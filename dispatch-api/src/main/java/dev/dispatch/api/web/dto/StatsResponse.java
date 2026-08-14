@@ -62,7 +62,7 @@ public record StatsResponse(
             depth.put(state.name(), stats.depth(state));
         }
         // The one place engine counters are copied out: the projection onto the HTTP contract.
-        QueueMetrics instance = stats.instance();
+        QueueMetrics instance = stats.instanceMetrics();
         return new StatsResponse(
                 stats.workerId(),
                 depth,

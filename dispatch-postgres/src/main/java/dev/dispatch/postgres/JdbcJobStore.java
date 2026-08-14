@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -241,7 +240,7 @@ public final class JdbcJobStore implements JobStore {
             }
             Job job = existing.get();
             if (job.state() != JobState.DEAD) {
-                return new JobActionResult.WrongState(job, Set.of(JobState.DEAD));
+                return new JobActionResult.WrongState(job, JobState.revivableStates());
             }
             Job revived = job.revivedForManualRetry(now);
             applyUpdates(connection, List.of(revived));

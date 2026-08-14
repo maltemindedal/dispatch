@@ -87,9 +87,7 @@ public final class JobQueue implements AutoCloseable {
      *         split is recorded in ADR-0001.
      */
     public Job submit(JobSubmission submission) {
-        if (registry.lookup(submission.type()).isEmpty()) {
-            throw new UnknownJobTypeException(submission.type(), registry.registeredTypes());
-        }
+        registry.require(submission.type());
         Job job = store.insert(submission, clock.instant());
         metrics.jobSubmitted();
         // Skip the poll interval for work produced on this instance.

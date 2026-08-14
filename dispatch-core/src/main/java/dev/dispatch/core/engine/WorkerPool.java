@@ -110,6 +110,11 @@ public final class WorkerPool implements AutoCloseable {
         return state.get() == State.RUNNING;
     }
 
+    /** Free claim-capacity permits; equals {@code concurrency} when nothing is in flight. */
+    int availablePermits() {
+        return capacity.available();
+    }
+
     /** Nudges an idle dispatcher so locally submitted work starts without waiting out the poll. */
     public void wakeUp() {
         Thread current = dispatcher;

@@ -69,28 +69,31 @@ class QueueConfigTest {
     @Test
     @DisplayName("every validation branch rejects its bad value")
     void validationRejectsBadValues() {
-        QueueConfig ok = QueueConfig.defaults();
-
-        assertThatThrownBy(() -> withWorkerId(ok, "   "))
+        // The builder passes non-null values through to the validating record constructor, so it
+        // exercises every branch except the worker id, whose null/blank inputs the builder
+        // deliberately treats as "keep the generated id" — those two go through the record.
+        assertThatThrownBy(() -> withWorkerId("   "))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("workerId");
-        assertThatThrownBy(() -> withWorkerId(ok, null))
+        assertThatThrownBy(() -> withWorkerId(null))
                 .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> withConcurrency(ok, 0))
+        assertThatThrownBy(() -> QueueConfig.builder().concurrency(0).build())
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("concurrency");
-        assertThatThrownBy(() -> withClaimBatchSize(ok, 0))
+        assertThatThrownBy(() -> QueueConfig.builder().claimBatchSize(0).build())
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("claimBatchSize");
-        assertThatThrownBy(() -> withMaintenanceBatchSize(ok, 0))
+        assertThatThrownBy(() -> QueueConfig.builder().maintenanceBatchSize(0).build())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("maintenanceBatchSize");
-        assertThatThrownBy(() -> withPollInterval(ok, Duration.ZERO))
+        assertThatThrownBy(() -> QueueConfig.builder().pollInterval(Duration.ZERO).build())
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("pollInterval");
-        assertThatThrownBy(() -> withVisibilityTimeout(ok, Duration.ofSeconds(-1)))
+        assertThatThrownBy(() -> QueueConfig.builder()
+                .visibilityTimeout(Duration.ofSeconds(-1)).build())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("visibilityTimeout");
-        assertThatThrownBy(() -> withMaintenanceInterval(ok, Duration.ZERO))
+        assertThatThrownBy(() -> QueueConfig.builder().maintenanceInterval(Duration.ZERO).build())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("maintenanceInterval");
-        assertThatThrownBy(() -> withShutdownDrainTimeout(ok, Duration.ofSeconds(-1)))
+        assertThatThrownBy(() -> QueueConfig.builder()
+                .shutdownDrainTimeout(Duration.ofSeconds(-1)).build())
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("shutdownDrainTimeout");
     }
@@ -98,57 +101,14 @@ class QueueConfigTest {
     @Test
     @DisplayName("a zero drain timeout is allowed: shut down without waiting")
     void zeroDrainTimeoutIsAllowed() {
-        assertThat(withShutdownDrainTimeout(QueueConfig.defaults(), Duration.ZERO)
+        assertThat(QueueConfig.builder().shutdownDrainTimeout(Duration.ZERO).build()
                 .shutdownDrainTimeout()).isEqualTo(Duration.ZERO);
     }
 
-    // The builder skips nulls by design, so validation is pinned through the record constructor.
-
-    private static QueueConfig withWorkerId(QueueConfig base, String workerId) {
+    private static QueueConfig withWorkerId(String workerId) {
+        QueueConfig base = QueueConfig.defaults();
         return new QueueConfig(workerId, base.concurrency(), base.claimBatchSize(),
                 base.pollInterval(), base.visibilityTimeout(), base.maintenanceInterval(),
                 base.maintenanceBatchSize(), base.shutdownDrainTimeout());
-    }
-
-    private static QueueConfig withConcurrency(QueueConfig base, int concurrency) {
-        return new QueueConfig(base.workerId(), concurrency, base.claimBatchSize(),
-                base.pollInterval(), base.visibilityTimeout(), base.maintenanceInterval(),
-                base.maintenanceBatchSize(), base.shutdownDrainTimeout());
-    }
-
-    private static QueueConfig withClaimBatchSize(QueueConfig base, int claimBatchSize) {
-        return new QueueConfig(base.workerId(), base.concurrency(), claimBatchSize,
-                base.pollInterval(), base.visibilityTimeout(), base.maintenanceInterval(),
-                base.maintenanceBatchSize(), base.shutdownDrainTimeout());
-    }
-
-    private static QueueConfig withPollInterval(QueueConfig base, Duration pollInterval) {
-        return new QueueConfig(base.workerId(), base.concurrency(), base.claimBatchSize(),
-                pollInterval, base.visibilityTimeout(), base.maintenanceInterval(),
-                base.maintenanceBatchSize(), base.shutdownDrainTimeout());
-    }
-
-    private static QueueConfig withVisibilityTimeout(QueueConfig base, Duration visibilityTimeout) {
-        return new QueueConfig(base.workerId(), base.concurrency(), base.claimBatchSize(),
-                base.pollInterval(), visibilityTimeout, base.maintenanceInterval(),
-                base.maintenanceBatchSize(), base.shutdownDrainTimeout());
-    }
-
-    private static QueueConfig withMaintenanceInterval(QueueConfig base, Duration interval) {
-        return new QueueConfig(base.workerId(), base.concurrency(), base.claimBatchSize(),
-                base.pollInterval(), base.visibilityTimeout(), interval,
-                base.maintenanceBatchSize(), base.shutdownDrainTimeout());
-    }
-
-    private static QueueConfig withMaintenanceBatchSize(QueueConfig base, int batchSize) {
-        return new QueueConfig(base.workerId(), base.concurrency(), base.claimBatchSize(),
-                base.pollInterval(), base.visibilityTimeout(), base.maintenanceInterval(),
-                batchSize, base.shutdownDrainTimeout());
-    }
-
-    private static QueueConfig withShutdownDrainTimeout(QueueConfig base, Duration timeout) {
-        return new QueueConfig(base.workerId(), base.concurrency(), base.claimBatchSize(),
-                base.pollInterval(), base.visibilityTimeout(), base.maintenanceInterval(),
-                base.maintenanceBatchSize(), timeout);
     }
 }

@@ -11,14 +11,14 @@ import java.util.Map;
  * the derived numbers — {@link #totalJobs()}, {@link #backlog()} — are sums over one snapshot and
  * always agree with it, rather than coming from separate round trips.
  *
- * @param workerId     which instance produced the process-scoped numbers
- * @param depthByState queue depth per state, read from shared storage (cluster-wide)
- * @param instance     counters for what this process has done since it started
+ * @param workerId        which instance produced the process-scoped numbers
+ * @param depthByState    queue depth per state, read from shared storage (cluster-wide)
+ * @param instanceMetrics counters for what this process has done since it started
  */
 public record QueueStats(
         String workerId,
         Map<JobState, Long> depthByState,
-        QueueMetrics instance) {
+        QueueMetrics instanceMetrics) {
 
     public QueueStats {
         depthByState = Map.copyOf(depthByState);

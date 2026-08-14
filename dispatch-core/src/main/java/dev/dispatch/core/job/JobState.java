@@ -105,9 +105,16 @@ public enum JobState {
         return CANCELLABLE;
     }
 
+    /** The states a manual retry accepts: DEAD alone. The single source for revive refusals. */
+    public static Set<JobState> revivableStates() {
+        return REVIVABLE;
+    }
+
     private static final Set<JobState> CANCELLABLE = Arrays.stream(values())
             .filter(JobState::isCancellable)
             .collect(Collectors.toUnmodifiableSet());
+
+    private static final Set<JobState> REVIVABLE = Set.of(DEAD);
 
     /** A mutable count map with every state present at zero, so absent states read as 0, not null. */
     public static Map<JobState, Long> zeroCounts() {

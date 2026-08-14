@@ -3,6 +3,8 @@ package dev.dispatch.postgres;
 import com.zaxxer.hikari.HikariDataSource;
 import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.JobStoreContract;
+import java.util.UUID;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -42,7 +44,7 @@ class PostgresJdbcJobStoreTest extends JobStoreContract {
     }
 
     @Override
-    protected JobStore createStore(java.util.function.Supplier<java.util.UUID> ids) {
+    protected JobStore createStore(Supplier<UUID> ids) {
         createStore();
         return new JdbcJobStore(dataSource, ids);
     }

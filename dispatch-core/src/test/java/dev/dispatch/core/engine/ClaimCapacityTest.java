@@ -11,8 +11,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The claim-capacity invariant: permits are conserved across every path the dispatch loop can
- * take — full batch, short claim, empty claim, store failure, shutdown race.
+ * The claim-capacity invariant: permits are conserved across the release shapes the dispatch loop
+ * uses — full batch, short claim, empty claim, store failure. Conservation across the pool's
+ * actual shutdown paths is asserted through a live pool in {@link WorkerPoolShutdownTest}.
  */
 @DisplayName("Claim capacity")
 class ClaimCapacityTest {

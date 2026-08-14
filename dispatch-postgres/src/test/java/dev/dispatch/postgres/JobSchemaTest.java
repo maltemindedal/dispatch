@@ -4,14 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.zaxxer.hikari.HikariDataSource;
+import dev.dispatch.core.job.JobState;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -143,18 +149,17 @@ class JobSchemaTest {
         // The lifecycle is enforced in the domain model and repeated in DDL to keep the database
         // honest; this pins the two lists together so neither can drift.
         String createTable = JobSchema.readStatements().get(0);
-        java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("state\\s+IN\\s*\\(([^)]*)\\)", java.util.regex.Pattern.DOTALL)
+        Matcher matcher = Pattern
+                .compile("state\\s+IN\\s*\\(([^)]*)\\)", Pattern.DOTALL)
                 .matcher(createTable);
 
         assertThat(matcher.find()).as("CHECK (state IN (...)) present").isTrue();
-        java.util.Set<String> statesInSql = java.util.Arrays.stream(matcher.group(1).split(","))
+        Set<String> statesInSql = Arrays.stream(matcher.group(1).split(","))
                 .map(name -> name.trim().replace("'", ""))
-                .collect(java.util.stream.Collectors.toSet());
-        java.util.Set<String> statesInEnum = java.util.Arrays
-                .stream(dev.dispatch.core.job.JobState.values())
+                .collect(Collectors.toSet());
+        Set<String> statesInEnum = Arrays.stream(JobState.values())
                 .map(Enum::name)
-                .collect(java.util.stream.Collectors.toSet());
+                .collect(Collectors.toSet());
 
         assertThat(statesInSql).isEqualTo(statesInEnum);
     }

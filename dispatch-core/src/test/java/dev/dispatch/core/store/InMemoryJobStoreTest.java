@@ -2,6 +2,8 @@ package dev.dispatch.core.store;
 
 import dev.dispatch.core.store.memory.InMemoryJobStore;
 import dev.dispatch.core.testing.JobStoreContract;
+import java.util.UUID;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.DisplayName;
 
 /**
@@ -18,7 +20,7 @@ class InMemoryJobStoreTest extends JobStoreContract {
     }
 
     @Override
-    protected JobStore createStore(java.util.function.Supplier<java.util.UUID> ids) {
+    protected JobStore createStore(Supplier<UUID> ids) {
         return new InMemoryJobStore(ids);
     }
 }

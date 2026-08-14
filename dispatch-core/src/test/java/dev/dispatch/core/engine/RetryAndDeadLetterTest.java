@@ -253,9 +253,9 @@ class RetryAndDeadLetterTest {
 
         QueueStats stats = queue.stats();
         // Two failed attempts and one success: one job, three attempts.
-        assertThat(stats.instance().failedAttempts()).isEqualTo(2);
-        assertThat(stats.instance().succeeded()).isEqualTo(1);
-        assertThat(stats.instance().failureRate())
+        assertThat(stats.instanceMetrics().failedAttempts()).isEqualTo(2);
+        assertThat(stats.instanceMetrics().succeeded()).isEqualTo(1);
+        assertThat(stats.instanceMetrics().failureRate())
                 .isCloseTo(2.0 / 3.0, org.assertj.core.data.Offset.offset(1e-9));
         assertThat(stats.depth(JobState.COMPLETED)).isEqualTo(1);
     }

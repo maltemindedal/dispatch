@@ -13,7 +13,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -196,7 +195,7 @@ public final class InMemoryJobStore implements JobStore {
                 return new JobActionResult.NotFound(id);
             }
             if (job.state() != JobState.DEAD) {
-                return new JobActionResult.WrongState(job, Set.of(JobState.DEAD));
+                return new JobActionResult.WrongState(job, JobState.revivableStates());
             }
             Job revived = job.revivedForManualRetry(now);
             jobs.put(id, revived);
