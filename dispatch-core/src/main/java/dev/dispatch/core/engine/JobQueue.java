@@ -66,10 +66,18 @@ public final class JobQueue implements AutoCloseable {
         return new Builder();
     }
 
-    /** Starts the sweeper and the worker pool. Until this is called, nothing executes. */
+    /**
+     * Starts the worker pool and the sweeper. Until this is called, nothing executes.
+     *
+     * <p>The pool goes first because it is the one that can refuse — if {@link #dispatchOnce()}
+     * already owns it, this throws, and a sweeper started a line earlier would have kept running
+     * behind that exception.
+     *
+     * @throws IllegalStateException if the pool was already started, or is being driven by hand
+     */
     public JobQueue start() {
-        maintenance.start();
         workers.start();
+        maintenance.start();
         log.info("Job queue {} started with handlers for {}", config.workerId(),
                 registry.registeredTypes());
         return this;

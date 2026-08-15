@@ -60,6 +60,8 @@ public final class WorkerPool implements AutoCloseable {
     private enum State {
         /** Built, nothing started. */
         NEW,
+        /** The first {@link #dispatchOnce} caller is mid-setup; nobody may cycle yet. */
+        STARTING,
         /** {@link #start} spawned a dispatcher thread, which is claiming on its own. */
         RUNNING,
         /** A caller is driving cycles by hand with {@link #dispatchOnce}; no dispatcher thread. */
@@ -112,10 +114,14 @@ public final class WorkerPool implements AutoCloseable {
                 config.visibilityTimeout());
     }
 
+    /**
+     * Executor first, then the flag: {@code accepting} is what other threads test before they
+     * touch {@code executor}, so it must be the last thing published.
+     */
     private void beginAccepting() {
-        accepting = true;
         executor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name(config.workerId() + "-job-", 0).factory());
+        accepting = true;
     }
 
     /** True while a dispatcher thread of this pool's own is claiming. */
@@ -179,13 +185,22 @@ public final class WorkerPool implements AutoCloseable {
      * @throws InterruptedException if interrupted while waiting for claim capacity
      */
     public DispatchResult dispatchOnce() throws InterruptedException {
-        State current = state.get();
-        if (current == State.NEW && state.compareAndSet(State.NEW, State.DRIVEN)) {
+        // Whoever wins the CAS does the one-time setup; everyone else must see it finished before
+        // they cycle. That is why the setup happens under STARTING rather than DRIVEN: a second
+        // caller cannot slip past the guard while the executor is still null.
+        if (state.compareAndSet(State.NEW, State.STARTING)) {
             beginAccepting();
-        } else if (state.get() != State.DRIVEN) {
+            if (!state.compareAndSet(State.STARTING, State.DRIVEN)) {
+                // shutdown() got in between. It may have run before the executor existed, so
+                // close it here; nothing was ever submitted to it.
+                executor.shutdown();
+            }
+        }
+        State current = state.get();
+        if (current != State.DRIVEN) {
             throw new IllegalStateException(
                     "dispatchOnce() needs a pool nobody else is claiming for (state="
-                    + state.get() + ")");
+                    + current + ")");
         }
         return dispatchCycle();
     }
@@ -408,7 +423,9 @@ public final class WorkerPool implements AutoCloseable {
             return true;
         }
         // A DRIVEN pool has no dispatcher thread to stop, but it does have in-flight jobs to
-        // drain, so it takes the same path from here.
+        // drain, so it takes the same path from here. So does STARTING: the null checks below
+        // cover whatever the interrupted setup had not yet created, and dispatchOnce() sees the
+        // STOPPING it lost the race to and cleans up its side.
 
         log.info("Worker pool {} shutting down: no longer claiming, draining {} in-flight job(s), "
                 + "deadline {}", config.workerId(), metrics.inFlight(), drainDeadline);
