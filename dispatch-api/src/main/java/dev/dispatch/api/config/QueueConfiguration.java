@@ -9,8 +9,7 @@ import dev.dispatch.core.handler.JobHandlerRegistry;
 import dev.dispatch.core.retry.ExponentialBackoffRetryPolicy;
 import dev.dispatch.core.retry.RetryPolicy;
 import dev.dispatch.core.store.JobStore;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
-import dev.dispatch.postgres.JdbcJobStore;
+import dev.dispatch.postgres.JdbcJobRows;
 import dev.dispatch.postgres.JobSchema;
 import java.time.Clock;
 import javax.sql.DataSource;
@@ -37,8 +36,9 @@ public class QueueConfiguration {
      * Picks the adapter for the store seam from the one typed {@code dispatch.store} property.
      * A typo fails at property binding with the valid values listed, not at bean resolution.
      *
-     * <p>The JDBC store serves PostgreSQL in production and H2 under the dev profile alike — see
-     * {@code JdbcJobStore} for why the SQL is portable. The DataSource is resolved lazily so the
+     * <p>The store itself is the same either way — only the row adapter behind it changes. The JDBC
+     * adapter serves PostgreSQL in production and H2 under the dev profile alike; see
+     * {@code JdbcJobRows} for why the SQL is portable. The DataSource is resolved lazily so the
      * in-memory choice never touches it.
      */
     @Bean
@@ -48,12 +48,12 @@ public class QueueConfiguration {
                 DataSource source = dataSource.getObject();
                 JobSchema.initialize(source);
                 log.info("Job queue backed by JDBC store");
-                yield new JdbcJobStore(source);
+                yield JobStore.over(new JdbcJobRows(source));
             }
             case MEMORY -> {
                 log.warn("Job queue backed by the IN-MEMORY store: jobs are lost on restart and "
                         + "are not shared with other instances");
-                yield new InMemoryJobStore();
+                yield JobStore.inMemory();
             }
         };
     }

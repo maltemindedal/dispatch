@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.zaxxer.hikari.HikariDataSource;
 import dev.dispatch.core.job.JobState;
+import dev.dispatch.core.store.JobStore;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.util.Arrays;
@@ -72,7 +73,7 @@ class JobSchemaTest {
     void createsSchema() {
         JobSchema.initialize(dataSource);
 
-        JdbcJobStore store = new JdbcJobStore(dataSource);
+        JobStore store = JobStore.over(new JdbcJobRows(dataSource));
         assertThat(totalRows(store)).isZero();
     }
 
@@ -80,7 +81,7 @@ class JobSchemaTest {
     @DisplayName("is idempotent when run again")
     void isIdempotent() {
         JobSchema.initialize(dataSource);
-        JdbcJobStore store = new JdbcJobStore(dataSource);
+        JobStore store = JobStore.over(new JdbcJobRows(dataSource));
         store.insert(new dev.dispatch.core.job.JobSubmission("t", "{}", 0, 3, null),
                 java.time.Instant.now());
 
@@ -124,7 +125,7 @@ class JobSchemaTest {
             }
         }
 
-        JdbcJobStore store = new JdbcJobStore(dataSource);
+        JobStore store = JobStore.over(new JdbcJobRows(dataSource));
         assertThat(totalRows(store)).isZero();
     }
 
@@ -164,7 +165,7 @@ class JobSchemaTest {
         assertThat(statesInSql).isEqualTo(statesInEnum);
     }
 
-    private static long totalRows(JdbcJobStore store) {
+    private static long totalRows(JobStore store) {
         return store.countsByState().values().stream().mapToLong(Long::longValue).sum();
     }
 }

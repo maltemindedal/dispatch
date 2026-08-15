@@ -67,10 +67,11 @@ The annotated index — every document, what it covers, who it's for — is
 ## Project structure
 
 ```text
-dispatch-core/       The engine: domain model, state machine, worker pool, in-memory store.
+dispatch-core/       The engine: domain model, state machine, worker pool, and JobStore —
+                     which owns every storage rule over a narrow JobRows seam.
                      Depends on the JDK and SLF4J only — no Spring, no JDBC.
-dispatch-postgres/   JdbcJobStore: the same engine backed by PostgreSQL or H2 via
-                     SELECT ... FOR UPDATE SKIP LOCKED. Still no Spring.
+dispatch-postgres/   JdbcJobRows: one adapter at that seam, backing the same engine with
+                     PostgreSQL or H2 via SELECT ... FOR UPDATE SKIP LOCKED. Still no Spring.
 dispatch-api/        Spring Boot: REST controllers, configuration properties, profile wiring.
 docs/                Documentation (see above).
 ```

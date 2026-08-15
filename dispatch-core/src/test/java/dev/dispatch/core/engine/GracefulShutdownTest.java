@@ -8,7 +8,7 @@ import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.retry.RetryPolicy;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
+import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.MutableClock;
 import java.time.Duration;
 import java.util.Map;
@@ -29,13 +29,13 @@ import org.junit.jupiter.api.Test;
 class GracefulShutdownTest {
 
     private MutableClock clock;
-    private InMemoryJobStore store;
+    private JobStore store;
     private InMemoryJobHandlerRegistry registry;
 
     @BeforeEach
     void setUp() {
         clock = MutableClock.atEpoch();
-        store = new InMemoryJobStore();
+        store = JobStore.inMemory();
         registry = new InMemoryJobHandlerRegistry();
     }
 

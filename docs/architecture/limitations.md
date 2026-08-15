@@ -6,9 +6,10 @@ An honest list of what this doesn't do, roughly in the order it should be fixed.
    re-delivered while it's still working. The fix is a periodic `locked_until` extension from the
    running handler. Today the mitigation is "set the timeout high enough", which is a real
    limitation, not a design choice.
-2. **`InMemoryJobStore.claim` scans and sorts the whole map.** O(n log n) per claim. It mirrors
-   the SQL `ORDER BY` deliberately so both stores behave identically, but a priority index would
-   be the first optimisation if it were ever used for more than tests and demos.
+2. **`InMemoryJobRows` scans and sorts the whole map to answer a selection.** O(n log n) per
+   claim. It renders the same `JobSelection` the SQL `ORDER BY` does, deliberately, so both
+   adapters behave identically — but a priority index would be the first optimisation if it were
+   ever used for more than tests and demos.
 3. **Completed jobs are kept forever.** There's no reaper. A real deployment wants
    `DELETE FROM jobs WHERE state = 'COMPLETED' AND updated_at < now() - interval '7 days'` on a
    schedule, or partitioning by month.

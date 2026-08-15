@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.dispatch.core.handler.InMemoryJobHandlerRegistry;
 import dev.dispatch.core.retry.RetryPolicy;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
+import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.MutableClock;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -24,7 +24,7 @@ class WorkerPoolConcurrencyTest {
     void fullConcurrencyIsReachable() throws Exception {
         // Regression for the permit leak: the old inline accounting converged on
         // claimBatchSize permits, so only 8 of these 16 blocking jobs would ever start.
-        InMemoryJobStore store = new InMemoryJobStore();
+        JobStore store = JobStore.inMemory();
         InMemoryJobHandlerRegistry registry = new InMemoryJobHandlerRegistry();
         CountDownLatch allStarted = new CountDownLatch(16);
         CountDownLatch releaseHandlers = new CountDownLatch(1);
