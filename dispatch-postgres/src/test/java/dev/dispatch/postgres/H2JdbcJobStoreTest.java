@@ -17,7 +17,7 @@ import org.junit.jupiter.api.DisplayName;
  * than PostgreSQL's; {@link PostgresJdbcJobStoreTest} and
  * {@link ConcurrentInstancesIntegrationTest} cover that against the real thing.
  */
-@DisplayName("JdbcJobStore on H2")
+@DisplayName("JobStore on H2")
 class H2JdbcJobStoreTest extends JobStoreContract {
 
     private static HikariDataSource dataSource;
@@ -34,7 +34,7 @@ class H2JdbcJobStoreTest extends JobStoreContract {
             dataSource = new HikariDataSource(config);
             JobSchema.initialize(dataSource);
         }
-        JdbcJobStore store = new JdbcJobStore(dataSource);
+        JobStore store = JobStore.over(new JdbcJobRows(dataSource));
         store.deleteAll();
         return store;
     }
@@ -42,7 +42,7 @@ class H2JdbcJobStoreTest extends JobStoreContract {
     @Override
     protected JobStore createStore(Supplier<UUID> ids) {
         createStore();
-        return new JdbcJobStore(dataSource, ids);
+        return JobStore.over(new JdbcJobRows(dataSource), ids);
     }
 
     @AfterAll

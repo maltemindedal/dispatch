@@ -19,7 +19,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * is going to mean anything.
  */
 @Testcontainers
-@DisplayName("JdbcJobStore on PostgreSQL")
+@DisplayName("JobStore on PostgreSQL")
 class PostgresJdbcJobStoreTest extends JobStoreContract {
 
     @Container
@@ -38,7 +38,7 @@ class PostgresJdbcJobStoreTest extends JobStoreContract {
             dataSource = PostgresTestSupport.pool(POSTGRES, 16);
             JobSchema.initialize(dataSource);
         }
-        JdbcJobStore store = new JdbcJobStore(dataSource);
+        JobStore store = JobStore.over(new JdbcJobRows(dataSource));
         store.deleteAll();
         return store;
     }
@@ -46,7 +46,7 @@ class PostgresJdbcJobStoreTest extends JobStoreContract {
     @Override
     protected JobStore createStore(Supplier<UUID> ids) {
         createStore();
-        return new JdbcJobStore(dataSource, ids);
+        return JobStore.over(new JdbcJobRows(dataSource), ids);
     }
 
     @AfterAll

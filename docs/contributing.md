@@ -28,12 +28,19 @@ The tests that carry the most weight, and the pattern behind them:
   run against all three stores: `InMemoryJobStoreTest`, `H2JdbcJobStoreTest`, and
   `PostgresJdbcJobStoreTest` all extend it. Every store must claim exclusively, order by priority
   then age, reject writes from a worker that lost its lease, and reclaim expired leases. This is
-  what makes the implementations genuinely interchangeable — any new `JobStore` should extend the
+  what makes the adapters genuinely interchangeable — any new `JobRows` adapter should extend the
   contract before anything else.
 - **`ConcurrentInstancesIntegrationTest`** (`dispatch-postgres`) — two engine instances with
   separate connection pools against one containerised PostgreSQL, 300 jobs, asserting every job
   executed exactly once, that both instances did work, and that a job orphaned by a "crashed"
   instance is recovered by its peer.
+- **`PriorityOrderingTest`**, **`DispatchCycleTest`** (`dispatch-core`) — never start a
+  dispatcher. They call `JobQueue.dispatchOnce()`, which runs one claim-and-dispatch cycle on the
+  calling thread and returns what it claimed, then `awaitCompletion` on that batch. Assertions land
+  on returned values instead of on how fast a background thread got somewhere; the whole priority
+  suite runs in about ten milliseconds with no polling and no timing to tune. Prefer this shape for
+  anything about *what* the engine does, and leave a running dispatcher to tests about *how it
+  runs*.
 - **`RetryAndDeadLetterTest`**, **`VisibilityTimeoutTest`**, **`ScheduledJobTest`**
   (`dispatch-core`) — driven by `MutableClock` (a test fixture), so "wait out the backoff" is an
   assignment rather than a `Thread.sleep`.

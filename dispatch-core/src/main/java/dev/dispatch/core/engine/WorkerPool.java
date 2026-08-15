@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -57,7 +58,14 @@ public final class WorkerPool implements AutoCloseable {
     private static final int MAX_ERROR_LENGTH = 2000;
 
     private enum State {
-        NEW, RUNNING, STOPPING, TERMINATED
+        /** Built, nothing started. */
+        NEW,
+        /** {@link #start} spawned a dispatcher thread, which is claiming on its own. */
+        RUNNING,
+        /** A caller is driving cycles by hand with {@link #dispatchOnce}; no dispatcher thread. */
+        DRIVEN,
+        STOPPING,
+        TERMINATED
     }
 
     private final JobStore store;
@@ -94,9 +102,7 @@ public final class WorkerPool implements AutoCloseable {
         if (!state.compareAndSet(State.NEW, State.RUNNING)) {
             throw new IllegalStateException("WorkerPool already started (state=" + state.get() + ")");
         }
-        accepting = true;
-        executor = Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name(config.workerId() + "-job-", 0).factory());
+        beginAccepting();
         Thread thread = new Thread(this::dispatchLoop, config.workerId() + "-dispatcher");
         thread.setDaemon(true);
         dispatcher = thread;
@@ -106,6 +112,13 @@ public final class WorkerPool implements AutoCloseable {
                 config.visibilityTimeout());
     }
 
+    private void beginAccepting() {
+        accepting = true;
+        executor = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name(config.workerId() + "-job-", 0).factory());
+    }
+
+    /** True while a dispatcher thread of this pool's own is claiming. */
     public boolean isRunning() {
         return state.get() == State.RUNNING;
     }
@@ -129,7 +142,7 @@ public final class WorkerPool implements AutoCloseable {
         log.debug("Dispatcher {} running", Thread.currentThread().getName());
         while (accepting) {
             try {
-                if (!claimAndDispatchOnce()) {
+                if (dispatchCycle().isEmpty()) {
                     // Nothing was waiting. Park until the poll interval elapses or a local
                     // submission unparks us.
                     LockSupport.parkNanos(this, config.pollInterval().toNanos());
@@ -148,16 +161,42 @@ public final class WorkerPool implements AutoCloseable {
     }
 
     /**
-     * One claim round trip.
+     * Runs one dispatch cycle on the calling thread: reserve claim budget, claim that many jobs,
+     * hand each to its own virtual thread. This is the operation {@link #start} performs in a loop,
+     * exposed so a caller can drive the pool a cycle at a time instead of racing a background
+     * thread — the same reason {@link QueueMaintenance#sweep()} is public.
      *
-     * @return true if at least one job was claimed and dispatched
+     * <p>It returns as soon as the claimed jobs are <em>dispatched</em>, not when they are done;
+     * that is what the dispatcher loop needs, since waiting for each batch would serialise a pool
+     * sized for concurrency. To wait for this cycle's jobs specifically, call
+     * {@link DispatchResult#awaitCompletion}.
+     *
+     * <p>Driving cycles by hand and running the dispatcher are mutually exclusive: whichever you do
+     * first claims the pool, and the other throws. Two claimers would fight over the same claim
+     * budget and neither would tell you anything reliable.
+     *
+     * @throws IllegalStateException if {@link #start} owns this pool, or it is shutting down
+     * @throws InterruptedException if interrupted while waiting for claim capacity
      */
-    private boolean claimAndDispatchOnce() throws InterruptedException {
+    public DispatchResult dispatchOnce() throws InterruptedException {
+        State current = state.get();
+        if (current == State.NEW && state.compareAndSet(State.NEW, State.DRIVEN)) {
+            beginAccepting();
+        } else if (state.get() != State.DRIVEN) {
+            throw new IllegalStateException(
+                    "dispatchOnce() needs a pool nobody else is claiming for (state="
+                    + state.get() + ")");
+        }
+        return dispatchCycle();
+    }
+
+    /** One claim round trip. Assumes the caller has established who owns the pool. */
+    private DispatchResult dispatchCycle() throws InterruptedException {
         // Block until there is room for at least one job; this is the backpressure valve.
         int budget = capacity.reserve(config.claimBatchSize());
         if (!accepting) {
             capacity.release(budget);
-            return false;
+            return DispatchResult.nothing(budget);
         }
 
         List<Job> claimed;
@@ -172,10 +211,11 @@ public final class WorkerPool implements AutoCloseable {
         // Hand back the permits the claim did not use.
         capacity.release(budget - claimed.size());
         if (claimed.isEmpty()) {
-            return false;
+            return DispatchResult.nothing(budget);
         }
         metrics.jobsClaimed(claimed.size());
 
+        CountDownLatch finished = new CountDownLatch(claimed.size());
         for (Job job : claimed) {
             try {
                 executor.execute(() -> {
@@ -183,17 +223,67 @@ public final class WorkerPool implements AutoCloseable {
                         runJob(job);
                     } finally {
                         capacity.release(1);
+                        finished.countDown();
                     }
                 });
             } catch (RejectedExecutionException e) {
                 // Shutdown raced with this claim. Leave the job RUNNING and let its visibility
                 // lease expire — the sweeper on this or another instance will pick it back up.
                 capacity.release(1);
+                finished.countDown();
                 log.warn("Job {} claimed but not dispatched (pool shutting down); "
                         + "it will be reclaimed after the visibility timeout", job.id());
             }
         }
-        return true;
+        return new DispatchResult(claimed, budget, finished);
+    }
+
+    /**
+     * What one dispatch cycle did.
+     *
+     * <p>{@link #dispatched()} is the batch in claim order — the order the store handed them over,
+     * which is the thing worth asserting about priority and fairness. The virtual-thread scheduler
+     * decides what order they actually <em>start</em> in, and never promised otherwise.
+     */
+    public static final class DispatchResult {
+
+        private final List<Job> dispatched;
+        private final int claimBudget;
+        private final CountDownLatch finished;
+
+        private DispatchResult(List<Job> dispatched, int claimBudget, CountDownLatch finished) {
+            this.dispatched = List.copyOf(dispatched);
+            this.claimBudget = claimBudget;
+            this.finished = finished;
+        }
+
+        private static DispatchResult nothing(int claimBudget) {
+            return new DispatchResult(List.of(), claimBudget, new CountDownLatch(0));
+        }
+
+        /** The jobs this cycle claimed and handed to workers, in claim order. */
+        public List<Job> dispatched() {
+            return dispatched;
+        }
+
+        /** How many permits the cycle reserved before claiming — at most the claim batch size. */
+        public int claimBudget() {
+            return claimBudget;
+        }
+
+        public boolean isEmpty() {
+            return dispatched.isEmpty();
+        }
+
+        /**
+         * Waits for every job <em>this</em> cycle dispatched to finish — handler returned and
+         * outcome recorded.
+         *
+         * @return true if they all finished within {@code timeout}
+         */
+        public boolean awaitCompletion(Duration timeout) throws InterruptedException {
+            return finished.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        }
     }
 
     // ---------------------------------------------------------------- execution
@@ -317,6 +407,8 @@ public final class WorkerPool implements AutoCloseable {
             state.set(State.TERMINATED);
             return true;
         }
+        // A DRIVEN pool has no dispatcher thread to stop, but it does have in-flight jobs to
+        // drain, so it takes the same path from here.
 
         log.info("Worker pool {} shutting down: no longer claiming, draining {} in-flight job(s), "
                 + "deadline {}", config.workerId(), metrics.inFlight(), drainDeadline);

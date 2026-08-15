@@ -195,6 +195,20 @@ public abstract class JobStoreContract {
         }
 
         @Test
+        @DisplayName("a capped claim takes the top of the order, not an arbitrary row")
+        void cappedClaimTakesTheHighestPriority() {
+            insertDue("send-email", 1);
+            clock.advance(Duration.ofMillis(10));
+            Job high = insertDue("send-email", 9);
+            clock.advance(Duration.ofMillis(10));
+            insertDue("send-email", 5);
+
+            assertThat(store.claim(WORKER, 1, LEASE, now()))
+                    .extracting(Job::id)
+                    .containsExactly(high.id());
+        }
+
+        @Test
         @DisplayName("honours the batch limit")
         void honoursLimit() {
             for (int i = 0; i < 5; i++) {
@@ -411,6 +425,44 @@ public abstract class JobStoreContract {
 
             assertThat(store.promoteDueJobs(now(), 2)).isEqualTo(2);
             assertThat(store.promoteDueJobs(now(), 100)).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("a capped promotion takes the jobs that came due first")
+        void cappedPromotionTakesTheEarliestDue() {
+            Job soon = store.insert(new JobSubmission("send-email", "{}", 0, 3,
+                    now().plus(Duration.ofSeconds(1))), now());
+            Job later = store.insert(new JobSubmission("send-email", "{}", 0, 3,
+                    now().plus(Duration.ofSeconds(2))), now());
+            clock.advance(Duration.ofSeconds(3));
+
+            assertThat(store.promoteDueJobs(now(), 1)).isEqualTo(1);
+
+            assertThat(reload(soon).state()).isEqualTo(JobState.PENDING);
+            assertThat(reload(later).state()).isEqualTo(JobState.SCHEDULED);
+        }
+
+        @Test
+        @DisplayName("a capped reclaim takes the leases that lapsed longest ago")
+        void cappedReclaimTakesTheOldestLeases() {
+            // Three jobs claimed a minute apart, so their leases lapse in that same order.
+            insertDue();
+            insertDue();
+            insertDue();
+            Job first = store.claim(WORKER, 1, LEASE, now()).get(0);
+            clock.advance(Duration.ofMinutes(1));
+            Job second = store.claim(WORKER, 1, LEASE, now()).get(0);
+            clock.advance(Duration.ofMinutes(1));
+            Job third = store.claim(WORKER, 1, LEASE, now()).get(0);
+
+            clock.advance(LEASE.plusMinutes(1));
+            assertThat(store.reclaimExpiredLeases(now(), 2)).isEqualTo(2);
+
+            // A cap must take the most-abandoned work, not an arbitrary two of the three —
+            // otherwise a queue that is always over the cap can starve one job indefinitely.
+            assertThat(reload(first).state()).isEqualTo(JobState.PENDING);
+            assertThat(reload(second).state()).isEqualTo(JobState.PENDING);
+            assertThat(reload(third).state()).isEqualTo(JobState.RUNNING);
         }
     }
 

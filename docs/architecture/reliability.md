@@ -5,12 +5,13 @@ the mechanisms behind both.
 
 ## Claiming, across several instances
 
-The whole multi-instance story is one SQL statement (`JdbcJobStore`):
+The whole multi-instance story is one SQL statement, which `JdbcJobRows` renders from the
+`JobSelection.CLAIMABLE` spec that `dispatch-core` owns:
 
 ```sql
 SELECT ... FROM jobs
- WHERE state = 'PENDING' AND scheduled_at <= ?
- ORDER BY priority DESC, scheduled_at, created_at
+ WHERE state IN ('PENDING') AND scheduled_at <= ?
+ ORDER BY priority DESC, scheduled_at, created_at, id
  LIMIT ?
  FOR UPDATE SKIP LOCKED
 ```
@@ -26,9 +27,11 @@ hammer the same table and every row still goes to exactly one of them. The claim
 that marks rows `RUNNING` share a transaction, so a crash in between rolls back and the jobs stay
 `PENDING`.
 
-`InMemoryJobStore` reaches the same guarantee with a `ReentrantLock` around a map scan. Both are
-held to the same test suite (`JobStoreContract`), so "swappable implementations" is a test result
-rather than a claim.
+`InMemoryJobRows` reaches the same guarantee with a `ReentrantLock` held for the whole scope, and
+answers the same `JobSelection` by filtering and sorting the map. Neither adapter decides what
+"claimable" means or what order it comes in — that is stated once in `dispatch-core` and rendered
+twice — and both are held to the same test suite (`JobStoreContract`), so "swappable
+implementations" is a test result rather than a claim.
 
 ## Delivery is at-least-once
 

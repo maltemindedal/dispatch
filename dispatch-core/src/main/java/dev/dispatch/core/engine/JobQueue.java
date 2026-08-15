@@ -22,14 +22,14 @@ import org.slf4j.LoggerFactory;
  * The engine's front door: a store, a handler registry, a worker pool and a maintenance sweeper,
  * wired together.
  *
- * <p>Deliberately plain Java. Nothing here knows what Spring is, and swapping
- * {@code InMemoryJobStore} for {@code JdbcJobStore} is a one-line change at the call site.
+ * <p>Deliberately plain Java. Nothing here knows what Spring is, and swapping the in-memory rows
+ * for {@code JdbcJobRows} is a one-line change at the call site.
  *
  * <p>Typical use:
  * <pre>{@code
  * var registry = new InMemoryJobHandlerRegistry().register("email", new EmailJobHandler());
  * try (var queue = JobQueue.builder()
- *         .store(new InMemoryJobStore())
+ *         .store(JobStore.inMemory())
  *         .registry(registry)
  *         .build()) {
  *     queue.start();
@@ -164,6 +164,22 @@ public final class JobQueue implements AutoCloseable {
      */
     public QueueMaintenance.SweepResult sweep() {
         return maintenance.sweep();
+    }
+
+    /**
+     * Runs one dispatch cycle synchronously — claim a batch and hand it to workers — and reports
+     * what it claimed. {@link #start()} does this on a thread of its own; a caller that wants to
+     * watch the queue move one batch at a time does it here instead, and never has to reason about
+     * a background dispatcher's timing.
+     *
+     * <p>Use this <em>or</em> {@link #start()}, not both. The result's
+     * {@link WorkerPool.DispatchResult#awaitCompletion} waits for this batch's handlers to finish.
+     *
+     * @throws IllegalStateException if {@link #start()} already owns the worker pool
+     * @throws InterruptedException if interrupted while waiting for claim capacity
+     */
+    public WorkerPool.DispatchResult dispatchOnce() throws InterruptedException {
+        return workers.dispatchOnce();
     }
 
     // ---------------------------------------------------------------- shutdown

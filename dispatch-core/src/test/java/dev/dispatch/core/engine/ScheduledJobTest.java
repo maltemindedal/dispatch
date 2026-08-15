@@ -8,7 +8,7 @@ import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
+import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.MutableClock;
 import java.time.Duration;
 import java.util.List;
@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Test;
 class ScheduledJobTest {
 
     private MutableClock clock;
-    private InMemoryJobStore store;
+    private JobStore store;
     private InMemoryJobHandlerRegistry registry;
     private JobQueue queue;
     private final List<String> executed = new CopyOnWriteArrayList<>();
@@ -30,7 +30,7 @@ class ScheduledJobTest {
     @BeforeEach
     void setUp() {
         clock = MutableClock.atEpoch();
-        store = new InMemoryJobStore();
+        store = JobStore.inMemory();
         registry = new InMemoryJobHandlerRegistry();
         registry.register("record", context -> executed.add(context.payload()));
 

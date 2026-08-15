@@ -11,6 +11,7 @@ import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.retry.RetryPolicy;
+import dev.dispatch.core.store.JobStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -60,7 +61,7 @@ class ConcurrentInstancesIntegrationTest {
     private final List<Instance> instances = new ArrayList<>();
 
     /** One simulated application instance: its own pool, its own store, its own workers. */
-    private record Instance(String workerId, HikariDataSource dataSource, JdbcJobStore store,
+    private record Instance(String workerId, HikariDataSource dataSource, JobStore store,
             JobQueue queue) {
     }
 
@@ -69,7 +70,7 @@ class ConcurrentInstancesIntegrationTest {
         HikariDataSource bootstrap = PostgresTestSupport.pool(POSTGRES, 2);
         try {
             JobSchema.initialize(bootstrap);
-            new JdbcJobStore(bootstrap).deleteAll();
+            JobStore.over(new JdbcJobRows(bootstrap)).deleteAll();
         } finally {
             bootstrap.close();
         }
@@ -88,7 +89,7 @@ class ConcurrentInstancesIntegrationTest {
 
     private Instance startInstance(String workerId, Duration visibilityTimeout) {
         HikariDataSource dataSource = PostgresTestSupport.pool(POSTGRES, 8);
-        JdbcJobStore store = new JdbcJobStore(dataSource);
+        JobStore store = JobStore.over(new JdbcJobRows(dataSource));
 
         InMemoryJobHandlerRegistry registry = new InMemoryJobHandlerRegistry();
         registry.register("shared-work", context -> {
@@ -166,8 +167,8 @@ class ConcurrentInstancesIntegrationTest {
         HikariDataSource poolA = PostgresTestSupport.pool(POSTGRES, 4);
         HikariDataSource poolB = PostgresTestSupport.pool(POSTGRES, 4);
         try {
-            JdbcJobStore storeA = new JdbcJobStore(poolA);
-            JdbcJobStore storeB = new JdbcJobStore(poolB);
+            JobStore storeA = JobStore.over(new JdbcJobRows(poolA));
+            JobStore storeB = JobStore.over(new JdbcJobRows(poolB));
             java.time.Instant now = java.time.Instant.now();
             for (int i = 0; i < 20; i++) {
                 storeA.insert(new JobSubmission("shared-work", "{}", 0, 3, null), now);
@@ -200,7 +201,7 @@ class ConcurrentInstancesIntegrationTest {
         Job job;
         HikariDataSource staging = PostgresTestSupport.pool(POSTGRES, 2);
         try {
-            JdbcJobStore stagingStore = new JdbcJobStore(staging);
+            JobStore stagingStore = JobStore.over(new JdbcJobRows(staging));
             job = stagingStore.insert(
                     new JobSubmission("shared-work", "{\"orphan\":true}", 0, 3, null), now);
             List<Job> stolen = stagingStore.claim("instance-doomed", 1, visibilityTimeout, now);
@@ -229,7 +230,7 @@ class ConcurrentInstancesIntegrationTest {
         HikariDataSource loader = PostgresTestSupport.pool(POSTGRES, 2);
         List<UUID> urgent = new ArrayList<>();
         try {
-            JdbcJobStore store = new JdbcJobStore(loader);
+            JobStore store = JobStore.over(new JdbcJobRows(loader));
             java.time.Instant now = java.time.Instant.now();
             for (int i = 0; i < 40; i++) {
                 store.insert(new JobSubmission("shared-work", "bulk-" + i, 0, 3, null), now);

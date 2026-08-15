@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import dev.dispatch.core.handler.InMemoryJobHandlerRegistry;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.retry.RetryPolicy;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
+import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.MutableClock;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
@@ -26,14 +26,14 @@ class WorkerPoolShutdownTest {
     private static final int CONCURRENCY = 4;
 
     private MutableClock clock;
-    private InMemoryJobStore store;
+    private JobStore store;
     private InMemoryJobHandlerRegistry registry;
     private WorkerPool pool;
 
     @BeforeEach
     void setUp() {
         clock = MutableClock.atEpoch();
-        store = new InMemoryJobStore();
+        store = JobStore.inMemory();
         registry = new InMemoryJobHandlerRegistry();
         pool = new WorkerPool(store, registry, RetryPolicy.immediate(),
                 QueueConfig.builder()

@@ -1,6 +1,5 @@
 package dev.dispatch.core.store;
 
-import dev.dispatch.core.store.memory.InMemoryJobStore;
 import dev.dispatch.core.testing.JobStoreContract;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -11,16 +10,16 @@ import org.junit.jupiter.api.DisplayName;
  * dispatch-postgres runs the very same suite, which is how "swappable implementations" stops being a
  * claim and starts being a test result.
  */
-@DisplayName("InMemoryJobStore")
+@DisplayName("JobStore")
 class InMemoryJobStoreTest extends JobStoreContract {
 
     @Override
     protected JobStore createStore() {
-        return new InMemoryJobStore();
+        return JobStore.inMemory();
     }
 
     @Override
     protected JobStore createStore(Supplier<UUID> ids) {
-        return new InMemoryJobStore(ids);
+        return JobStore.inMemory(ids);
     }
 }

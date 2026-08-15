@@ -6,7 +6,7 @@ import dev.dispatch.api.config.QueueProperties.Retry;
 import dev.dispatch.api.config.QueueProperties.StoreType;
 import dev.dispatch.core.engine.QueueConfig;
 import dev.dispatch.core.retry.ExponentialBackoffRetryPolicy;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
+import dev.dispatch.core.store.JobStore;
 import java.time.Duration;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.DisplayName;
@@ -91,7 +91,7 @@ class QueueConfigurationTest {
         };
 
         assertThat(configuration.jobStore(propertiesWithRetry(new Retry(null, null, null, null)),
-                untouchable)).isInstanceOf(InMemoryJobStore.class);
+                untouchable)).isInstanceOf(JobStore.class);
     }
 
     private static QueueProperties propertiesWithRetry(Retry retry) {

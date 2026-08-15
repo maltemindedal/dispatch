@@ -1,20 +1,17 @@
 package dev.dispatch.core.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.awaitility.Awaitility.await;
 
 import dev.dispatch.core.handler.InMemoryJobHandlerRegistry;
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobSubmission;
-import dev.dispatch.core.store.memory.InMemoryJobStore;
+import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.MutableClock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,17 +20,18 @@ import org.junit.jupiter.api.Test;
 /**
  * Priority ordering, observed through the worker pool rather than the store.
  *
- * <p>The trick that makes this deterministic: a {@link JobQueue} accepts submissions before
- * {@link JobQueue#start()} is called. So the whole backlog is loaded first, and only then does a
- * single-threaded pool start draining it — meaning execution order <em>is</em> claim order, with
- * no races to reason about. The one concurrent test needs a second trick, explained inline: the
- * first batch of handlers rendezvous before any of them returns.
+ * <p>Nothing here starts a dispatcher. The queue is driven a cycle at a time with
+ * {@link JobQueue#dispatchOnce()}, so every assertion is about a value the engine returned rather
+ * than about how fast a background thread got somewhere. There is no polling, no rendezvous latch
+ * and no timing to tune — the concurrent case in particular used to need all three.
  */
 @DisplayName("Priority and fairness")
 class PriorityOrderingTest {
 
+    private static final Duration PATIENCE = Duration.ofSeconds(10);
+
     private MutableClock clock;
-    private InMemoryJobStore store;
+    private JobStore store;
     private InMemoryJobHandlerRegistry registry;
     private JobQueue queue;
     private final List<String> executionOrder = new CopyOnWriteArrayList<>();
@@ -41,7 +39,7 @@ class PriorityOrderingTest {
     @BeforeEach
     void setUp() {
         clock = MutableClock.atEpoch();
-        store = new InMemoryJobStore();
+        store = JobStore.inMemory();
         registry = new InMemoryJobHandlerRegistry();
         registry.register("record", context -> executionOrder.add(context.payload()));
     }
@@ -49,7 +47,7 @@ class PriorityOrderingTest {
     @AfterEach
     void tearDown() {
         if (queue != null) {
-            queue.shutdown(Duration.ofSeconds(10));
+            queue.shutdown(PATIENCE);
         }
     }
 
@@ -63,8 +61,6 @@ class PriorityOrderingTest {
                         .workerId("test-worker")
                         .concurrency(1)
                         .claimBatchSize(1)
-                        .pollInterval(Duration.ofMillis(20))
-                        .maintenanceInterval(Duration.ofMillis(20))
                         .build())
                 .build();
     }
@@ -76,9 +72,18 @@ class PriorityOrderingTest {
         return job;
     }
 
+    /** Runs {@code count} cycles, each one finishing before the next begins. */
+    private void runCycles(int count) throws InterruptedException {
+        for (int i = 0; i < count; i++) {
+            assertThat(queue.dispatchOnce().awaitCompletion(PATIENCE))
+                    .as("cycle %d finished", i)
+                    .isTrue();
+        }
+    }
+
     @Test
     @DisplayName("higher priority jobs run first, whatever order they arrived in")
-    void higherPriorityRunsFirst() {
+    void higherPriorityRunsFirst() throws Exception {
         queue = serialQueue();
 
         submit("low", 1);
@@ -87,10 +92,7 @@ class PriorityOrderingTest {
         submit("also-urgent", 100);
         submit("lowest", 0);
 
-        queue.start();
-
-        await().atMost(Duration.ofSeconds(10))
-                .untilAsserted(() -> assertThat(executionOrder).hasSize(5));
+        runCycles(5);
 
         assertThat(executionOrder)
                 .containsExactly("urgent", "also-urgent", "normal", "low", "lowest");
@@ -98,17 +100,14 @@ class PriorityOrderingTest {
 
     @Test
     @DisplayName("jobs of equal priority run oldest first, so nothing starves behind its peers")
-    void equalPriorityRunsOldestFirst() {
+    void equalPriorityRunsOldestFirst() throws Exception {
         queue = serialQueue();
 
         for (int i = 0; i < 8; i++) {
             submit("job-" + i, 5);
         }
 
-        queue.start();
-
-        await().atMost(Duration.ofSeconds(10))
-                .untilAsserted(() -> assertThat(executionOrder).hasSize(8));
+        runCycles(8);
 
         assertThat(executionOrder)
                 .containsExactly("job-0", "job-1", "job-2", "job-3",
@@ -117,7 +116,7 @@ class PriorityOrderingTest {
 
     @Test
     @DisplayName("a job submitted later at higher priority still overtakes the queued backlog")
-    void latecomerWithHigherPriorityOvertakes() {
+    void latecomerWithHigherPriorityOvertakes() throws Exception {
         queue = serialQueue();
 
         for (int i = 0; i < 5; i++) {
@@ -125,34 +124,28 @@ class PriorityOrderingTest {
         }
         submit("vip", 50);
 
-        queue.start();
-
-        await().atMost(Duration.ofSeconds(10))
-                .untilAsserted(() -> assertThat(executionOrder).hasSize(6));
+        runCycles(6);
 
         assertThat(executionOrder.get(0)).isEqualTo("vip");
     }
 
     @Test
     @DisplayName("negative priorities sort below the default band")
-    void negativePriorityRunsLast() {
+    void negativePriorityRunsLast() throws Exception {
         queue = serialQueue();
 
         submit("background", -10);
         submit("default", 0);
         submit("elevated", 5);
 
-        queue.start();
-
-        await().atMost(Duration.ofSeconds(10))
-                .untilAsserted(() -> assertThat(executionOrder).hasSize(3));
+        runCycles(3);
 
         assertThat(executionOrder).containsExactly("elevated", "default", "background");
     }
 
     @Test
     @DisplayName("under real concurrency, high priority jobs are still claimed first")
-    void priorityHoldsUnderConcurrency() {
+    void priorityHoldsUnderConcurrency() throws Exception {
         int concurrency = 4;
         queue = JobQueue.builder()
                 .store(store)
@@ -162,44 +155,30 @@ class PriorityOrderingTest {
                         .workerId("test-worker")
                         .concurrency(concurrency)
                         .claimBatchSize(concurrency)
-                        .pollInterval(Duration.ofMillis(20))
-                        .maintenanceInterval(Duration.ofMillis(20))
                         .build())
                 .build();
 
-        // Execution order only mirrors claim order while no permit has been handed back: the
-        // moment one handler returns, the dispatcher may claim the next job, and the JDK's
-        // virtual-thread scheduler makes no promise that a job dispatched earlier starts before
-        // one dispatched later. So the first `concurrency` handlers rendezvous before any of them
-        // returns — nothing beyond the first batch can be claimed until that whole batch is
-        // running, which makes "the first four to run" exactly "the first batch claimed".
-        CountDownLatch firstBatchRunning = new CountDownLatch(concurrency);
-        registry.replace("record", context -> {
-            executionOrder.add(context.payload());
-            firstBatchRunning.countDown();
-            firstBatchRunning.await(10, TimeUnit.SECONDS);
-        });
-
-        List<String> expectedFirstWave = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             submit("bulk-" + i, 0);
         }
+        List<String> expectedFirstWave = new ArrayList<>();
         for (int i = 0; i < concurrency; i++) {
             String label = "priority-" + i;
             expectedFirstWave.add(label);
             submit(label, 99);
         }
 
-        queue.start();
+        // The subject is claim order, so assert on what the cycle claimed. Execution order cannot
+        // answer this: once handlers run in parallel, the virtual-thread scheduler decides who
+        // starts first and has never promised to follow dispatch order.
+        WorkerPool.DispatchResult firstWave = queue.dispatchOnce();
 
-        await().atMost(Duration.ofSeconds(15))
-                .untilAsserted(() -> assertThat(executionOrder).hasSize(24));
+        assertThat(firstWave.claimBudget()).isEqualTo(concurrency);
+        assertThat(firstWave.dispatched()).extracting(Job::payload)
+                .containsExactlyElementsOf(expectedFirstWave);
 
-        // With four workers and a batch of four, the priority jobs form the first claimed batch.
-        // Their start order among themselves is up to the scheduler, so compare as a set.
-        assertThat(executionOrder.subList(0, concurrency))
-                .containsExactlyInAnyOrderElementsOf(expectedFirstWave);
-        assertThat(executionOrder.subList(concurrency, 24))
+        assertThat(firstWave.awaitCompletion(PATIENCE)).isTrue();
+        assertThat(queue.dispatchOnce().dispatched()).extracting(Job::payload)
                 .allSatisfy(label -> assertThat(label).startsWith("bulk-"));
     }
 

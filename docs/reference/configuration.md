@@ -48,7 +48,7 @@ The default profile is `dev` (set via `spring.profiles.default` in `application.
 (`jdbc:h2:mem:dispatch`), no Docker required, `dev.dispatch` logging at DEBUG, and the H2 web
 console enabled at `/h2-console`.
 
-The same `JdbcJobStore` runs here as against PostgreSQL — same SQL, same claim query. What H2
+The same `JdbcJobRows` adapter runs here as against PostgreSQL — same SQL, same claim query. What H2
 does not reproduce is contention behaviour: its locking is coarser, so a second instance pointed
 at the same H2 database gets empty claims rather than the next unlocked rows. Single instance is
 fine; for anything multi-instance, use the `postgres` profile.
