@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -24,7 +26,8 @@ import org.junit.jupiter.api.Test;
  * <p>The trick that makes this deterministic: a {@link JobQueue} accepts submissions before
  * {@link JobQueue#start()} is called. So the whole backlog is loaded first, and only then does a
  * single-threaded pool start draining it — meaning execution order <em>is</em> claim order, with
- * no races to reason about.
+ * no races to reason about. The one concurrent test needs a second trick, explained inline: the
+ * first batch of handlers rendezvous before any of them returns.
  */
 @DisplayName("Priority and fairness")
 class PriorityOrderingTest {
@@ -150,24 +153,38 @@ class PriorityOrderingTest {
     @Test
     @DisplayName("under real concurrency, high priority jobs are still claimed first")
     void priorityHoldsUnderConcurrency() {
+        int concurrency = 4;
         queue = JobQueue.builder()
                 .store(store)
                 .registry(registry)
                 .clock(clock)
                 .config(QueueConfig.builder()
                         .workerId("test-worker")
-                        .concurrency(4)
-                        .claimBatchSize(4)
+                        .concurrency(concurrency)
+                        .claimBatchSize(concurrency)
                         .pollInterval(Duration.ofMillis(20))
                         .maintenanceInterval(Duration.ofMillis(20))
                         .build())
                 .build();
 
+        // Execution order only mirrors claim order while no permit has been handed back: the
+        // moment one handler returns, the dispatcher may claim the next job, and the JDK's
+        // virtual-thread scheduler makes no promise that a job dispatched earlier starts before
+        // one dispatched later. So the first `concurrency` handlers rendezvous before any of them
+        // returns — nothing beyond the first batch can be claimed until that whole batch is
+        // running, which makes "the first four to run" exactly "the first batch claimed".
+        CountDownLatch firstBatchRunning = new CountDownLatch(concurrency);
+        registry.replace("record", context -> {
+            executionOrder.add(context.payload());
+            firstBatchRunning.countDown();
+            firstBatchRunning.await(10, TimeUnit.SECONDS);
+        });
+
         List<String> expectedFirstWave = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             submit("bulk-" + i, 0);
         }
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < concurrency; i++) {
             String label = "priority-" + i;
             expectedFirstWave.add(label);
             submit(label, 99);
@@ -179,10 +196,10 @@ class PriorityOrderingTest {
                 .untilAsserted(() -> assertThat(executionOrder).hasSize(24));
 
         // With four workers and a batch of four, the priority jobs form the first claimed batch.
-        // Their finishing order among themselves is up to the scheduler, so compare as a set.
-        assertThat(executionOrder.subList(0, 4))
+        // Their start order among themselves is up to the scheduler, so compare as a set.
+        assertThat(executionOrder.subList(0, concurrency))
                 .containsExactlyInAnyOrderElementsOf(expectedFirstWave);
-        assertThat(executionOrder.subList(4, 24))
+        assertThat(executionOrder.subList(concurrency, 24))
                 .allSatisfy(label -> assertThat(label).startsWith("bulk-"));
     }
 
