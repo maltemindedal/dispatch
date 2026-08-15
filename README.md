@@ -32,9 +32,13 @@ curl -s -X POST localhost:8080/jobs \
   -d '{"type":"send-email","payload":{"to":"someone@example.com","subject":"Hi"},"maxRetries":5}'
 # → 201 with the stored job: {"id":"...","state":"PENDING","attempt":0,...}
 
-# The email simulator fails about 30% of the time, so this is worth watching:
+# The bundled send-email handler is a simulator that fails ~30% of attempts *on purpose*, to
+# give the retry/backoff machinery something to do. Watch attempts climb and jobs recover:
 curl -s localhost:8080/stats | jq
 ```
+
+Seeing `FAILED` on a fresh job is expected — it's waiting out a retry backoff, not broken. Set
+`dispatch.demo-handlers: false` to drop the simulators in a real deployment.
 
 With PostgreSQL:
 
