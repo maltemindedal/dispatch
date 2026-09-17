@@ -1,8 +1,7 @@
 # Running multiple instances
 
-The whole point of the PostgreSQL store is that N application instances can share one `jobs`
-table and every job still runs exactly once. This guide sets that up locally and pokes at the
-failure modes.
+The PostgreSQL store lets N application instances share one `jobs` table while each job runs once.
+This guide sets that up locally and tests its failure modes.
 
 ## Prerequisites
 
@@ -13,14 +12,14 @@ docker compose up -d
 ```
 
 > **Why not H2?** The dev profile's H2 accepts the same SQL but does not reproduce PostgreSQL's
-> contention behaviour — see
+> contention behaviour. See
 > [the dev profile](../reference/configuration.md#the-dev-profile-local-development). Anything
 > multi-instance needs PostgreSQL.
 
 ## Start two instances
 
-Build the jar once and run it twice — two `bootRun` invocations would contend on the same Gradle
-project lock, and separate processes are closer to the real deployment anyway:
+Build the jar once and run it twice. Two `bootRun` invocations would contend on the same Gradle
+project lock, and separate processes are closer to a real deployment:
 
 ```bash
 ./gradlew :dispatch-api:bootJar
@@ -31,7 +30,7 @@ java -jar $JAR --spring.profiles.active=postgres --server.port=8081 &
 ```
 
 Each instance generates its own worker id at startup (`worker-` plus a random suffix). That id is
-the lease key — if you ever set `dispatch.worker-id` explicitly, it must be unique per process, or
+the lease key. If you set `dispatch.worker-id` explicitly, it must be unique per process, or
 instances can release each other's leases.
 
 ## Feed them and watch the split
@@ -46,11 +45,11 @@ curl -s localhost:8080/stats | jq '{worker: .workerId, claimed: .thisInstance.cl
 curl -s localhost:8081/stats | jq '{worker: .workerId, claimed: .thisInstance.claimed}'
 ```
 
-Both instances claim a share of the work — roughly even on an otherwise idle machine — and the
+Both instances claim a share of the work, roughly evenly on an otherwise idle machine, and the
 two `claimed` counts sum to exactly 200 once `queueDepth.COMPLETED` reaches 200, because no job
 ran twice. (That exactly-once property is what `ConcurrentInstancesIntegrationTest` asserts, with
-300 jobs against a containerised PostgreSQL.) There is no coordinator making it happen — the
-claim query's `FOR UPDATE SKIP LOCKED` is the entire mutual-exclusion mechanism
+300 jobs against a containerised PostgreSQL.) There is no coordinator. The claim query's
+`FOR UPDATE SKIP LOCKED` provides the mutual-exclusion mechanism
 ([how that works](../architecture/reliability.md#claiming-across-several-instances)).
 
 Note that `queueDepth` is identical from both instances (it reads the shared table) while
@@ -68,9 +67,9 @@ WorkerPool : Worker pool worker-e59ff4c1 shutting down: no longer claiming,
 WorkerPool : Worker pool worker-e59ff4c1 stopped (clean drain: true)
 ```
 
-**Rudely.** `kill -9` one instance instead. Its in-flight jobs are now orphaned: rows stuck in
+**Rudely.** `kill -9` one instance instead. Its in-flight jobs are now orphaned. Their rows stay in
 `RUNNING` holding a lease nobody will release. Once each lease's visibility timeout expires
-(default `5m` — set `dispatch.visibility-timeout` lower, e.g. `30s`, if you want to watch this
+(default `5m`; set `dispatch.visibility-timeout` lower, such as `30s`, if you want to watch this
 without waiting), the survivor's maintenance sweeper returns them to `PENDING` and they run again
 on the surviving instance. Watch `leasesReclaimed` tick up in the survivor's `/stats`.
 
@@ -85,6 +84,6 @@ export DISPATCH_DB_USER=dispatch
 export DISPATCH_DB_PASSWORD=...
 ```
 
-Schema creation at startup is safe to run from several instances simultaneously — the concurrent
+Schema creation at startup is safe to run from several instances simultaneously. The concurrent
 bootstrap race is handled deliberately
 ([details](../architecture/reliability.md#schema-creation-is-a-race)).

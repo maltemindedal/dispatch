@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The builder owns "unset means default": null (and a blank worker id) keeps the engine's own
- * value, so adapters can hand configuration over without translating it knob by knob.
+ * value, so adapters can pass configuration through without translating each setting.
  */
 @DisplayName("Queue config")
 class QueueConfigTest {
@@ -71,7 +71,7 @@ class QueueConfigTest {
     void validationRejectsBadValues() {
         // The builder passes non-null values through to the validating record constructor, so it
         // exercises every branch except the worker id, whose null/blank inputs the builder
-        // deliberately treats as "keep the generated id" — those two go through the record.
+        // deliberately treats as "keep the generated id". Those two go through the record.
         assertThatThrownBy(() -> withWorkerId("   "))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("workerId");
         assertThatThrownBy(() -> withWorkerId(null))

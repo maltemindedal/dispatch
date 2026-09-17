@@ -6,7 +6,7 @@ import java.util.concurrent.Semaphore;
  * The worker pool's backpressure valve: a fixed pool of permits, one per job in flight.
  *
  * <p>The interface is a strict reserve/release pair. {@link #reserve} blocks until at least one
- * permit is free — this is what stops the dispatcher claiming work it has no room to run — then
+ * permit is free. This stops the dispatcher claiming work it has no room to run. It then
  * opportunistically takes whatever else is free without waiting, capped at the claim batch size,
  * so a single claim query can fill a batch. The caller owes back exactly what {@code reserve}
  * returned: unused budget as soon as the claim comes up short, and one permit per dispatched job
@@ -14,7 +14,7 @@ import java.util.concurrent.Semaphore;
  *
  * <p>Invariant: permits are conserved. Every permit {@link #reserve} hands out comes back through
  * {@link #release}, so {@code available() + in-flight == concurrency} at every quiet point. The
- * whole point of this class is that the invariant lives — and is tested — in one place instead of
+ * The point of this class is to keep and test the invariant in one place instead of
  * being arithmetic spread across the dispatch loop's happy, empty, failing, and shutting-down
  * paths.
  */

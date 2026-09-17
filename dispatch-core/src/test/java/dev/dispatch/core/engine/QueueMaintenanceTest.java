@@ -37,7 +37,7 @@ class QueueMaintenanceTest {
 
     /**
      * In-memory rows that can be told to break. {@code failing} makes every selection throw, which
-     * is what a sweep does first — and faking at the {@link JobRows} seam rather than at
+     * is what a sweep does first. Faking the {@link JobRows} boundary rather than
      * {@link JobStore} means one overridden method instead of thirteen delegating ones.
      */
     private static final class FlakyRows implements JobRows {
@@ -134,7 +134,7 @@ class QueueMaintenanceTest {
         rows.failing.set(true);
         maintenance.start();
 
-        // Let the scheduler hit the failure repeatedly; each throw would have silently ended a
+        // Let the scheduler hit the failure repeatedly; each throw would have ended a
         // scheduleWithFixedDelay task that let it escape.
         await().atMost(Duration.ofSeconds(5)).until(() -> rows.failuresSeen.get() >= 3);
 

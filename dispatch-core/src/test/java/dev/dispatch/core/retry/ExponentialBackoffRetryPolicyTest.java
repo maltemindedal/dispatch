@@ -91,7 +91,7 @@ class ExponentialBackoffRetryPolicyTest {
         Duration ceiling = Duration.ofSeconds(40);
         assertThat(delays).allSatisfy(delay -> assertThat(delay)
                 .isBetween(ceiling.dividedBy(2), ceiling));
-        // The point of jitter: a batch of jobs failing together must not retry in lockstep.
+        // Jitter keeps a batch of jobs that fail together from retrying in lockstep.
         assertThat(delays.stream().distinct().count()).isGreaterThan(50);
     }
 

@@ -9,10 +9,11 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A clock the test drives by hand, so scheduling and timeout behaviour can be tested by moving
- * time rather than by sleeping through it. Sleeping tests are slow and flaky; this is neither.
+ * time rather than by sleeping through it. Sleeping tests are slow and flaky; this clock avoids
+ * both problems.
  *
  * <p>Instants are truncated to milliseconds because they have to survive a round trip through a
- * database column — PostgreSQL keeps microseconds, not nanoseconds — and the shared store contract
+ * database column. PostgreSQL keeps microseconds, not nanoseconds, and the shared store contract
  * compares them for equality.
  */
 public final class MutableClock extends Clock {

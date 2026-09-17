@@ -18,8 +18,7 @@ Base URL: `http://localhost:8080` by default. All bodies are JSON. Errors come b
 ## POST /jobs
 
 Submits a job. Types with no registered handler are rejected here rather than being allowed to
-retry their way to the dead-letter state — a typo in a job type is a client error and reads
-like one.
+retry their way to the dead-letter state. The API reports a typo in a job type as a client error.
 
 ```bash
 curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
@@ -43,14 +42,14 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
 
 **Responses**
 
-- `201 Created` — the [job](#the-job-resource), with a `Location: /jobs/{id}` header.
-- `400 Bad Request` — validation failure; the problem document carries a per-field `errors` map.
-- `422 Unprocessable Entity` — no handler registered for `type`; the message lists the types
+- `201 Created`: the [job](#the-job-resource), with a `Location: /jobs/{id}` header.
+- `400 Bad Request`: validation failure. The problem document carries a per-field `errors` map.
+- `422 Unprocessable Entity`: no handler is registered for `type`. The message lists the types
   that exist.
 
 ## GET /jobs/{id}
 
-- `200 OK` — the [job](#the-job-resource).
+- `200 OK`: the [job](#the-job-resource).
 - `404 Not Found`.
 
 ## GET /jobs
@@ -74,19 +73,19 @@ Out-of-range values are a `400`. Returns a JSON array of [jobs](#the-job-resourc
 
 Requeues a dead-lettered job with a fresh retry budget.
 
-- `200 OK` — the revived job, back in `PENDING` with `attempt` reset.
-- `404 Not Found` — no such job.
-- `409 Conflict` — the job exists but is not `DEAD`.
+- `200 OK`: the revived job, back in `PENDING` with `attempt` reset.
+- `404 Not Found`: no such job.
+- `409 Conflict`: the job exists but is not `DEAD`.
 
 ## DELETE /jobs/{id}
 
-Cancels a job that has not started — only `PENDING` and `SCHEDULED` qualify. Cancelling deletes
+Cancels a job that has not started. Only `PENDING` and `SCHEDULED` qualify. Cancelling deletes
 the row: the lifecycle has no `CANCELLED` state, because a job nobody ran leaves nothing worth
 keeping.
 
-- `204 No Content` — cancelled (deleted).
-- `404 Not Found` — no such job.
-- `409 Conflict` — already running or finished.
+- `204 No Content`: cancelled (deleted).
+- `404 Not Found`: no such job.
+- `409 Conflict`: already running or finished.
 
 ## GET /stats
 
@@ -110,9 +109,9 @@ curl -s localhost:8080/stats | jq
 }
 ```
 
-The response splits cluster-wide facts from process-local ones, because mixing them misleads:
+The response separates cluster-wide facts from process-local ones:
 
-- **`queueDepth`**, **`totalJobs`**, **`backlog`** come from the shared store and describe the
+- **`queueDepth`**, **`totalJobs`**, and **`backlog`** come from the shared store and describe the
   whole cluster right now. `backlog` is jobs still owed execution:
   `PENDING + SCHEDULED + FAILED`.
 - **`thisInstance`** counts what this process has done since it started, and resets on restart.
@@ -159,7 +158,7 @@ Notes:
 - `retriesRemaining` is computed so callers don't do the `maxRetries`/`attempt` arithmetic.
 - `attempt` is 1-based once the job has run; `0` means never attempted.
 - Null fields (`lockedUntil`, `lockedBy`, `lastError` on a healthy job) are omitted from the JSON
-  (`non_null` serialization) — the example shows them for completeness.
+  (`non_null` serialization). The example shows them for completeness.
 - `state` is one of the six [lifecycle states](../architecture/job-lifecycle.md).
 
 ## Errors
@@ -176,5 +175,5 @@ Problem documents per RFC 9457, `Content-Type: application/problem+json`:
 }
 ```
 
-Validation failures (`400`) additionally carry an `errors` object mapping field names to
+Validation failures (`400`) also carry an `errors` object mapping field names to
 messages.

@@ -69,7 +69,7 @@ public final class JobQueue implements AutoCloseable {
     /**
      * Starts the worker pool and the sweeper. Until this is called, nothing executes.
      *
-     * <p>The pool goes first because it is the one that can refuse — if {@link #dispatchOnce()}
+     * <p>The pool goes first because it can refuse. If {@link #dispatchOnce()}
      * already owns it, this throws, and a sweeper started a line earlier would have kept running
      * behind that exception.
      *
@@ -86,11 +86,11 @@ public final class JobQueue implements AutoCloseable {
     // ---------------------------------------------------------------- producing
 
     /**
-     * Enqueues a job. Returns immediately with the persisted snapshot — PENDING if it is due now,
+     * Enqueues a job. Returns immediately with the persisted snapshot. It is PENDING if due now,
      * SCHEDULED if it was submitted with a future {@code scheduledAt}.
      *
-     * @throws UnknownJobTypeException if no handler is registered here for the type — a typo
-     *         should fail at the door, not retry its way to the dead-letter state. A handler
+     * @throws UnknownJobTypeException if no handler is registered here for the type. A typo should
+     *         fail at the door, not retry its way to the dead-letter state. A handler
      *         missing at <em>execution</em> time stays retryable instead (rolling deploys); the
      *         split is recorded in ADR-0001.
      */
@@ -125,7 +125,7 @@ public final class JobQueue implements AutoCloseable {
     }
 
     /**
-     * Cancels a job that has not started yet — once a worker holds the lease there is nothing
+     * Cancels a job that has not started yet. Once a worker holds the lease there is nothing
      * safe to cancel from out here. A refusal says why, with the state the store observed in the
      * same atomic step.
      */
@@ -167,7 +167,7 @@ public final class JobQueue implements AutoCloseable {
     }
 
     /**
-     * Runs one maintenance sweep synchronously — promote due jobs, reclaim expired leases.
+     * Runs one maintenance sweep synchronously. It promotes due jobs and reclaims expired leases.
      * The scheduler does this on a timer; tests call it directly to avoid sleeping.
      */
     public QueueMaintenance.SweepResult sweep() {
@@ -175,7 +175,7 @@ public final class JobQueue implements AutoCloseable {
     }
 
     /**
-     * Runs one dispatch cycle synchronously — claim a batch and hand it to workers — and reports
+     * Runs one dispatch cycle synchronously. It claims a batch, hands it to workers, and reports
      * what it claimed. {@link #start()} does this on a thread of its own; a caller that wants to
      * watch the queue move one batch at a time does it here instead, and never has to reason about
      * a background dispatcher's timing.

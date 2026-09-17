@@ -20,9 +20,9 @@ import org.junit.jupiter.api.Test;
 /**
  * Crash recovery via the visibility timeout.
  *
- * <p>A crashed worker is simulated the honest way: claim a job straight from the store under some
+ * <p>A crashed worker is simulated by claiming a job straight from the store under some
  * other worker's name and then never report a result. The row sits in RUNNING with a lease nobody
- * will ever release — exactly the state a {@code kill -9} leaves behind — and the live queue's
+ * will ever release. This is the state a {@code kill -9} leaves behind, and the live queue's
  * sweeper has to notice and recover it.
  */
 @DisplayName("Visibility timeout and crash recovery")
@@ -72,13 +72,13 @@ class VisibilityTimeoutTest {
     @DisplayName("a job orphaned by a crashed worker is picked up again once its lease expires")
     void orphanedJobIsRecovered() {
         Job job = store.insert(new JobSubmission("record", "orphan", 0, 3, null), clock.instant());
-        // A worker claims the job and is then killed: no completion, no failure, just silence.
+        // A worker claims the job and is then killed. It records neither completion nor failure.
         store.claim("crashed-worker", 1, VISIBILITY_TIMEOUT, clock.instant());
         assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.RUNNING);
 
         startQueue();
 
-        // While the lease is live, nobody touches it — even though the owner is long gone.
+        // While the lease is live, nobody touches it, even though the owner is gone.
         await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
             assertThat(executed).isEmpty();
             assertThat(store.find(job.id()).orElseThrow().lockedBy()).isEqualTo("crashed-worker");

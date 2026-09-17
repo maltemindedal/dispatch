@@ -1,7 +1,7 @@
 package dev.dispatch.core.handler;
 
 /**
- * Signals a failure that retrying cannot fix — a malformed payload, a deleted target, a rejected
+ * Signals a failure that retrying cannot fix, such as a malformed payload, a deleted target, or a rejected
  * credential. The engine skips the retry budget and dead-letters the job immediately.
  */
 public class PermanentJobFailureException extends Exception {

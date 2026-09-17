@@ -11,8 +11,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The claim-capacity invariant: permits are conserved across the release shapes the dispatch loop
- * uses — full batch, short claim, empty claim, store failure. Conservation across the pool's
+ * The claim-capacity invariant: permits are conserved across the release cases the dispatch loop
+ * uses, including full batches, short claims, empty claims, and store failures. Conservation across the pool's
  * actual shutdown paths is asserted through a live pool in {@link WorkerPoolShutdownTest}.
  */
 @DisplayName("Claim capacity")
@@ -40,7 +40,7 @@ class ClaimCapacityTest {
     @DisplayName("full concurrency is reachable across consecutive reserves")
     void fullConcurrencyIsReachable() throws Exception {
         // Regression: the inline predecessor of this class drained every free permit but
-        // returned at most claimBatchSize of them, so concurrency=16/batch=8 silently capped
+        // returned at most claimBatchSize of them, so concurrency=16/batch=8 capped
         // in-flight work at 8.
         ClaimCapacity capacity = new ClaimCapacity(16);
 

@@ -8,7 +8,7 @@ import java.util.Map;
  * counters, labelled so the two scopes cannot be confused.
  *
  * <p>The depth map is a single {@link dev.dispatch.core.store.JobStore#countsByState()} read, so
- * the derived numbers — {@link #totalJobs()}, {@link #backlog()} — are sums over one snapshot and
+ * the derived numbers, {@link #totalJobs()} and {@link #backlog()}, are sums over one snapshot and
  * always agree with it, rather than coming from separate round trips.
  *
  * @param workerId        which instance produced the process-scoped numbers

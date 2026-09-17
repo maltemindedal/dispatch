@@ -11,11 +11,11 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Which rows an operation wants, and in what order — stated once, rendered by every adapter.
+ * Which rows an operation wants and in what order. Every adapter renders the same selection.
  *
  * <p>Before this existed, each rule lived twice: "claimable" was a Java predicate in the in-memory
  * store and a {@code WHERE} clause in the SQL one, and the claim order was a {@code Comparator} in
- * one and an {@code ORDER BY} in the other. Two of those pairs had already drifted apart — the
+ * one and an {@code ORDER BY} in the other. Two of those pairs had already drifted apart. The
  * in-memory claim order carried an id tiebreak the SQL did not, and the in-memory expired-lease
  * sweep had no order at all. Nothing but the contract suite was watching, and the contract suite
  * did not cover either case.
@@ -42,7 +42,7 @@ public record JobSelection(
      * <p>The trailing {@link JobField#ID} makes the order <em>total</em>: without it, jobs identical
      * on priority, schedule and creation time come back in whatever order storage felt like, so a
      * capped claim could return a different subset every call and starve one of them. It does not
-     * make the order identical everywhere — Java compares UUIDs as signed longs and PostgreSQL
+     * make the order identical everywhere. Java compares UUIDs as signed longs and PostgreSQL
      * compares them as unsigned bytes, so tied jobs may come back in a different sequence per
      * adapter. Each adapter is self-consistent, which is the property a batch cap actually needs.
      */
@@ -65,7 +65,7 @@ public record JobSelection(
             CLAIM_ORDER);
 
     /**
-     * RUNNING with a lapsed lease — the crash-recovery path. Ordered by lease age so a capped sweep
+     * RUNNING with a lapsed lease is the crash-recovery path. It is ordered by lease age so a capped sweep
      * always takes the longest-abandoned jobs first, rather than an arbitrary subset.
      */
     public static final JobSelection EXPIRED_LEASE = new JobSelection(

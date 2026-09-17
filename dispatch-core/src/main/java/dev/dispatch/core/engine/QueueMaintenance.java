@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
  *       crash-recovery story.</li>
  * </ol>
  *
- * <p>Every instance runs this against the shared store, and that is fine — the operations are
+ * <p>Every instance runs this against the shared store, and that is fine. The operations are
  * idempotent and atomic, so overlapping sweeps just find less to do.
  */
 public final class QueueMaintenance implements AutoCloseable {
@@ -94,7 +94,7 @@ public final class QueueMaintenance implements AutoCloseable {
         try {
             sweep();
         } catch (RuntimeException e) {
-            // Never let a transient storage error kill the scheduled task — if this throws,
+            // Never let a transient storage error kill the scheduled task. If this throws,
             // scheduleWithFixedDelay silently stops running it, and nothing recovers after that.
             log.error("Maintenance sweep failed; will retry next interval", e);
         }

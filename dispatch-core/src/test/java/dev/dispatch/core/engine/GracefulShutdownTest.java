@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  * Graceful shutdown: stop claiming, drain what is in flight, interrupt the stragglers.
  *
  * <p>These tests use real sleeps rather than the mutable clock, because what is under test is
- * genuine wall-clock draining behaviour rather than a scheduling decision.
+ * real wall-clock draining behavior rather than a scheduling decision.
  */
 @DisplayName("Graceful shutdown")
 class GracefulShutdownTest {
@@ -101,7 +101,7 @@ class GracefulShutdownTest {
         queue.shutdown(Duration.ofSeconds(10));
 
         Map<JobState, Long> counts = store.countsByState();
-        // The backlog is untouched and, crucially, still claimable by another instance.
+        // The backlog is untouched and remains claimable by another instance.
         assertThat(counts.get(JobState.PENDING)).isPositive();
         assertThat(counts.get(JobState.RUNNING)).isZero();
         assertThat(counts.get(JobState.COMPLETED) + counts.get(JobState.PENDING)).isEqualTo(30);
@@ -137,7 +137,7 @@ class GracefulShutdownTest {
         assertThat(elapsedMillis).isLessThan(10_000);
 
         // The interrupted attempt was recorded as a failure, so the job goes back on the queue
-        // for another instance to pick up. Nothing is silently dropped.
+        // for another instance to pick up. The queue drops nothing.
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertThat(store.find(job.id()).orElseThrow().state())
                         .isIn(JobState.FAILED, JobState.PENDING));

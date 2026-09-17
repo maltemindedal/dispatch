@@ -10,7 +10,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 
 /**
- * The shared store contract, run against H2 — the local dev database.
+ * The shared store contract, run against H2, the local development database.
  *
  * <p>Passing here proves the SQL is portable enough that {@code ./gradlew bootRun} needs no
  * PostgreSQL. It does <em>not</em> prove multi-instance claiming, because H2's locking is coarser

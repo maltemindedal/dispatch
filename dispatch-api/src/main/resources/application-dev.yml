@@ -1,6 +1,6 @@
 # Local development: H2 in memory, no Docker required.
 #
-# The same JdbcJobStore runs here as against PostgreSQL — same SQL, same claim query. What H2 does
+# The same JdbcJobStore runs here as against PostgreSQL, with the same SQL and claim query. What H2 does
 # not reproduce is contention behaviour: its locking is coarser, so a second instance pointed at
 # the same H2 database gets empty claims rather than the next unlocked rows. Single instance is
 # fine; for anything multi-instance, run the postgres profile.

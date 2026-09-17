@@ -41,8 +41,8 @@ public class ApiExceptionHandler {
     }
 
     /**
-     * Unreachable from the endpoints — refusals are decided atomically in the store and arrive as
-     * {@code JobActionResult}, not exceptions — but a backstop is cheaper than a 500.
+     * Unreachable from the endpoints. Refusals are decided atomically in the store and arrive as
+     * {@code JobActionResult}, not exceptions, but a backstop is cheaper than a 500.
      */
     @ExceptionHandler(IllegalJobTransitionException.class)
     ProblemDetail handleIllegalTransition(IllegalJobTransitionException e) {
@@ -61,7 +61,7 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    /** Covers bad query parameters too — an unrecognised {@code ?status=} lands here. */
+    /** Covers bad query parameters too. An unrecognised {@code ?status=} lands here. */
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(IllegalArgumentException e) {
         return problem(HttpStatus.BAD_REQUEST, "Invalid request", e.getMessage());

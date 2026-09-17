@@ -11,14 +11,14 @@ import java.util.function.Function;
  * <p>This exists so an ordering rule can be <em>stated</em> once and <em>rendered</em> twice. Each
  * constant carries a {@link Comparator} for adapters that sort in the JVM; adapters that sort in a
  * database map the constant to a column of their own. Neither adapter gets to decide what the order
- * is — {@link JobSelection} already did.
+ * is. {@link JobSelection} already did.
  *
  * <p>Fields that carry a timestamp also expose it, which is what lets a selection say "due when this
  * field is at or before now" without naming a specific column.
  */
 public enum JobField {
 
-    /** Higher runs first — the only field a selection normally sorts descending. */
+    /** Higher runs first; the only field a selection normally sorts descending. */
     PRIORITY(Comparator.comparingInt(Job::priority), null),
 
     /** Earliest instant a job may be claimed; also carries the retry backoff. */

@@ -44,13 +44,13 @@ import javax.sql.DataSource;
  * <p>{@code FOR UPDATE} takes a row lock on everything the select returns, held until the
  * transaction commits. On its own that would make instances queue up behind each other: instance B
  * would <em>block</em> on the rows instance A is holding. {@code SKIP LOCKED} changes that to
- * "pretend those rows are not there" — so B walks past A's rows and takes the next ones down the
+ * "pretend those rows are not there", so B walks past A's rows and takes the next ones down the
  * ordering.
  *
  * <p>The result is a shared queue with no coordinator, no leader election and no distributed lock:
  * N instances can hammer the same table and each row still goes to exactly one of them. The select
  * and the {@code UPDATE} that marks the rows RUNNING happen in one transaction, so a crash between
- * the two rolls back and the jobs simply stay PENDING.
+ * the two rolls back and the jobs stay PENDING.
  *
  * <p>{@link Scope#byId} deliberately omits {@code SKIP LOCKED}: an operator action must wait for the
  * row and answer about the state it is really in, rather than report "not found" because a claimer
@@ -58,8 +58,8 @@ import javax.sql.DataSource;
  *
  * <h2>On H2</h2>
  * The same SQL runs on H2 for local development, but H2's locking is coarser than PostgreSQL's: a
- * contending reader gets an empty result rather than the next unlocked rows. Exclusivity — the
- * property that matters — still holds, but throughput under contention does not, which is why the
+ * contending reader gets an empty result rather than the next unlocked rows. Exclusivity, the
+ * relevant property, still holds, but throughput under contention does not, which is why the
  * multi-instance tests run against real PostgreSQL via Testcontainers.
  *
  * <h2>Where the rules live</h2>

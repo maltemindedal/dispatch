@@ -5,8 +5,8 @@ import java.time.Instant;
 import java.util.Objects;
 
 /**
- * What a caller supplies when enqueuing work. Everything else on {@link Job} — id, state,
- * timestamps, attempt counter — is the engine's business.
+ * What a caller supplies when enqueuing work. The engine owns the rest of {@link Job}: its id,
+ * state, timestamps, and attempt counter.
  *
  * @param type        handler routing key
  * @param payload     JSON document passed through verbatim to the handler

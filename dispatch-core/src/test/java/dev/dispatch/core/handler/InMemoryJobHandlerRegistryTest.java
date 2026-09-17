@@ -12,7 +12,7 @@ class InMemoryJobHandlerRegistryTest {
     private final InMemoryJobHandlerRegistry registry = new InMemoryJobHandlerRegistry();
 
     @Test
-    @DisplayName("registering the same type twice is refused, not silently replaced")
+    @DisplayName("registering the same type twice is refused without replacement")
     void duplicateRegistrationIsRefused() {
         registry.register("send-email", context -> { });
 

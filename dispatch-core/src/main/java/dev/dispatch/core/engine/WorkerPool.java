@@ -30,7 +30,7 @@ import org.slf4j.LoggerFactory;
  * One <em>dispatcher</em> thread loops: reserve capacity, claim that many jobs, hand each to the
  * executor. Each job then runs on its own virtual thread.
  *
- * <p>The split is deliberate. The dispatcher is a single long-lived platform thread — there is
+ * <p>The split is deliberate. The dispatcher is a single long-lived platform thread. There is
  * exactly one, it lives for the life of the process, and it spends its time blocked in a database
  * call, which is precisely the workload a platform thread is still right for. Handlers are the
  * opposite: many, short-lived, and mostly waiting on I/O, which is exactly what virtual threads
@@ -39,7 +39,7 @@ import org.slf4j.LoggerFactory;
  *
  * <h2>Backpressure</h2>
  * A {@link ClaimCapacity} sized to {@code concurrency} gates everything. The dispatcher reserves
- * a claim budget before it claims — blocking when the pool is saturated — capped at the claim
+ * a claim budget before it claims. It blocks when the pool is saturated and caps the budget at the
  * batch size, and hands unused permits straight back. So the engine never claims work it has no
  * room to run, which matters: a claimed job is invisible to every other instance until its lease
  * expires, and claiming greedily would park work on a busy node while idle nodes starve.
@@ -48,7 +48,7 @@ import org.slf4j.LoggerFactory;
  * At-least-once. A worker can finish a job and die before recording the result; the visibility
  * timeout then hands that job to someone else. Handlers must be idempotent. Recording a result is
  * always conditional on still holding the lease, so a worker that stalled past its timeout cannot
- * overwrite whoever took the job over — it counts a lost lease and moves on.
+ * overwrite whoever took the job over. It counts a lost lease and moves on.
  */
 public final class WorkerPool implements AutoCloseable {
 
@@ -170,7 +170,7 @@ public final class WorkerPool implements AutoCloseable {
      * Runs one dispatch cycle on the calling thread: reserve claim budget, claim that many jobs,
      * hand each to its own virtual thread. This is the operation {@link #start} performs in a loop,
      * exposed so a caller can drive the pool a cycle at a time instead of racing a background
-     * thread — the same reason {@link QueueMaintenance#sweep()} is public.
+     * thread. That is why {@link QueueMaintenance#sweep()} is public too.
      *
      * <p>It returns as soon as the claimed jobs are <em>dispatched</em>, not when they are done;
      * that is what the dispatcher loop needs, since waiting for each batch would serialise a pool
@@ -243,7 +243,7 @@ public final class WorkerPool implements AutoCloseable {
                 });
             } catch (RejectedExecutionException e) {
                 // Shutdown raced with this claim. Leave the job RUNNING and let its visibility
-                // lease expire — the sweeper on this or another instance will pick it back up.
+                // lease expire. The sweeper on this or another instance will pick it back up.
                 capacity.release(1);
                 finished.countDown();
                 log.warn("Job {} claimed but not dispatched (pool shutting down); "
@@ -256,7 +256,7 @@ public final class WorkerPool implements AutoCloseable {
     /**
      * What one dispatch cycle did.
      *
-     * <p>{@link #dispatched()} is the batch in claim order — the order the store handed them over,
+     * <p>{@link #dispatched()} is the batch in claim order, the order the store handed them over,
      * which is the thing worth asserting about priority and fairness. The virtual-thread scheduler
      * decides what order they actually <em>start</em> in, and never promised otherwise.
      */
@@ -281,7 +281,7 @@ public final class WorkerPool implements AutoCloseable {
             return dispatched;
         }
 
-        /** How many permits the cycle reserved before claiming — at most the claim batch size. */
+        /** How many permits the cycle reserved before claiming. It is at most the claim batch size. */
         public int claimBudget() {
             return claimBudget;
         }
@@ -291,7 +291,7 @@ public final class WorkerPool implements AutoCloseable {
         }
 
         /**
-         * Waits for every job <em>this</em> cycle dispatched to finish — handler returned and
+         * Waits for every job <em>this</em> cycle dispatched to finish. The handler has returned and
          * outcome recorded.
          *
          * @return true if they all finished within {@code timeout}
@@ -320,7 +320,7 @@ public final class WorkerPool implements AutoCloseable {
             recordFailure(job, t);
             if (t instanceof InterruptedException) {
                 // Shutdown passed its drain deadline and interrupted us. Restore the flag only
-                // now that the failure is recorded — setting it earlier can abort the very
+                // now that the failure is recorded. Setting it earlier can abort the very
                 // storage call that puts the job back on the queue.
                 Thread.currentThread().interrupt();
             }
@@ -336,13 +336,13 @@ public final class WorkerPool implements AutoCloseable {
                 log.debug("Job {} ({}) completed on attempt {}", job.id(), job.type(), job.attempt());
             } else {
                 metrics.leaseLost();
-                log.warn("Job {} finished but its lease was already gone — it ran longer than the "
+                log.warn("Job {} finished but its lease was already gone. It ran longer than the "
                         + "visibility timeout ({}) and another worker may have re-run it",
                         job.id(), config.visibilityTimeout());
             }
         } catch (RuntimeException e) {
             // The work happened; we just could not say so. The lease expires and the job is
-            // retried — which is exactly why handlers have to be idempotent.
+            // retried. That is why handlers have to be idempotent.
             log.error("Job {} succeeded but the result could not be recorded", job.id(), e);
         }
     }
@@ -351,7 +351,7 @@ public final class WorkerPool implements AutoCloseable {
         String error = describe(failure);
         if (failure instanceof UnknownJobTypeException) {
             // Possibly a rolling deploy where another instance already has the handler, so this
-            // is retryable rather than fatal — but it is worth shouting about. Submission-time
+            // is retryable rather than fatal, but it is worth shouting about. Submission-time
             // unknowns are refused outright by JobQueue.submit; the split is ADR-0001.
             log.error("No handler for job type '{}' on worker {}; job {} will be retried",
                     job.type(), config.workerId(), job.id());
@@ -409,7 +409,7 @@ public final class WorkerPool implements AutoCloseable {
      * Graceful shutdown in three beats: stop claiming, let in-flight jobs finish, then interrupt
      * whatever is still running when the deadline passes.
      *
-     * <p>Jobs interrupted at the deadline are not lost — they fail their attempt and go back on
+     * <p>Jobs interrupted at the deadline are not lost. They fail their attempt and go back on
      * the queue under the normal retry rules, and anything that never got that far is recovered by
      * its visibility lease.
      *

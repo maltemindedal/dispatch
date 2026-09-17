@@ -10,13 +10,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Pretends to send an email, and fails a configurable share of the time — the classic flaky
+ * Pretends to send an email and fails a configurable share of the time. This simulates a flaky
  * downstream dependency that makes retries and backoff worth watching.
  *
  * <p>Payloads that do not mention a recipient fail <em>permanently</em>: no amount of retrying
- * fixes a malformed request, so those go straight to the dead-letter state. That contrast — a
- * transient network blip versus a bad payload — is the distinction the retry machinery exists to
- * draw.
+ * fixes a malformed request, so those go straight to the dead-letter state. The retry machinery
+ * distinguishes transient network blips from bad payloads.
  */
 public final class SendEmailJobHandler implements JobHandler {
 

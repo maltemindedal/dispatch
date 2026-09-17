@@ -30,7 +30,7 @@ import org.testcontainers.utility.DockerImageName;
  * virtual-thread workers run it, and read the result back through the API.
  *
  * <p>{@link JobApiTest} covers status codes and payload shapes against the in-memory store; this
- * one exists to prove the pieces are actually connected — schema creation, JDBC claiming,
+ * one exists to prove the pieces are connected. It covers schema creation, JDBC claiming,
  * execution, and the stats endpoint reading from shared storage.
  */
 @Testcontainers
@@ -44,7 +44,7 @@ import org.testcontainers.utility.DockerImageName;
         "dispatch.retry.max-delay=10ms",
         "dispatch.retry.jitter-factor=0"
 })
-// Activating the real profile means application-postgres.yml is loaded and bound, not just the
+// Activating the real profile means application-postgres.yml is loaded and bound, not only the
 // container's connection details. That is deliberate: a property this file gets wrong (a Hikari
 // setting written as a Duration, say) should fail here rather than at the first real startup.
 @ActiveProfiles("postgres")
@@ -120,7 +120,7 @@ class PostgresEndToEndTest {
         assertThat(revived.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(revived.getBody().attempt()).isZero();
 
-        // It fails again, of course — the handler never recovers. The point is that the operator
+        // It fails again because the handler never recovers. The point is that the operator
         // action took effect against the shared database.
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() ->
                 assertThat(rest.getForObject("/jobs/" + job.id(), JobResponse.class).attempt())

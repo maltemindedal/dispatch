@@ -20,13 +20,13 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Deliberately not a migration tool. The DDL is idempotent ({@code CREATE ... IF NOT EXISTS}),
  * which is enough for a project that has exactly one schema version, and it keeps the dependency
- * list honest. The moment a second version exists, this should be replaced with Flyway or
- * Liquibase pointed at the same SQL — the statements would not need to change.
+ * list honest. The moment a second version exists, replace this with Flyway or Liquibase pointed
+ * at the same SQL. The statements would not need to change.
  *
  * <h2>Why {@code IF NOT EXISTS} is not enough on its own</h2>
  * In PostgreSQL, {@code CREATE TABLE IF NOT EXISTS} is <em>not</em> atomic against concurrent DDL.
  * Two instances starting at the same moment both find the table missing, both issue the create;
- * the second blocks on the first's lock and then fails — usually with a unique violation on the
+ * the second blocks on the first's lock and then fails, usually with a unique violation on the
  * {@code pg_type} catalog rather than anything as legible as "table already exists".
  *
  * <p>That is not a hypothetical. Two replicas rolling out together is the normal case, and it is
@@ -121,7 +121,7 @@ public final class JobSchema {
     }
 
     /**
-     * Drops whole-line {@code --} comments. The statement splitter is naive on purpose — it is
+     * Drops whole-line {@code --} comments. The statement splitter is intentionally limited. It is
      * only ever fed this one file, which keeps its semicolons out of string literals.
      */
     private static String stripComments(String sql) {

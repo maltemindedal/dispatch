@@ -30,9 +30,9 @@ import org.junit.jupiter.api.Test;
  * The behaviour every {@link JobStore} must exhibit, written once and run against each
  * implementation.
  *
- * <p>This is the payoff of putting persistence behind an interface: the in-memory store and the
- * PostgreSQL store are not merely swappable in principle, they are held to the same suite in
- * practice — including the claim-exclusivity test, which is the property the whole design rests on.
+ * <p>Putting persistence behind an interface lets the in-memory store and the PostgreSQL store
+ * share one suite. They are not merely swappable in principle. The suite includes the
+ * claim-exclusivity test that checks the queue's locking guarantee.
  *
  * <p>Subclasses supply a fresh, empty store from {@link #createStore()} and an id-injected
  * variant from {@link #createStore(Supplier)}.
@@ -409,7 +409,7 @@ public abstract class JobStoreContract {
             store.reclaimExpiredLeases(now(), 100);
             store.claim(OTHER_WORKER, 1, LEASE, now());
 
-            // The zombie finally finishes and tries to report success. It must not be believed.
+            // The expired worker finally finishes and tries to report success. The store must reject it.
             assertThat(store.complete(job.id(), WORKER, now())).isEmpty();
             assertThat(reload(job).lockedBy()).isEqualTo(OTHER_WORKER);
         }
@@ -458,7 +458,7 @@ public abstract class JobStoreContract {
             clock.advance(LEASE.plusMinutes(1));
             assertThat(store.reclaimExpiredLeases(now(), 2)).isEqualTo(2);
 
-            // A cap must take the most-abandoned work, not an arbitrary two of the three —
+            // A cap must take the most-abandoned work, not an arbitrary two of the three.
             // otherwise a queue that is always over the cap can starve one job indefinitely.
             assertThat(reload(first).state()).isEqualTo(JobState.PENDING);
             assertThat(reload(second).state()).isEqualTo(JobState.PENDING);
@@ -632,10 +632,10 @@ public abstract class JobStoreContract {
         }
     }
 
-    // ------------------------------------------------------------ seam symmetry
+    // ---------------------------------------------------------- contract symmetry
 
     @Nested
-    @DisplayName("seam symmetry")
+    @DisplayName("implementations follow the same contract")
     class SeamSymmetry {
 
         @Test

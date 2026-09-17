@@ -22,7 +22,7 @@ import java.util.function.UnaryOperator;
  * <p>Every rule about jobs in storage lives here, once: which rows are claimable and in what order
  * ({@link JobSelection}), when a cancel or a manual retry is refused, and the check that a worker
  * still holds its lease before its result is recorded. Underneath sits {@link JobRows}, a seam that
- * knows how to hold rows exclusively and nothing else — a map under a lock in one adapter, SQL rows
+ * knows how to hold rows exclusively and nothing else. One adapter uses a map under a lock, and SQL rows
  * under {@code FOR UPDATE} in the other.
  *
  * <p>That split is the point. These rules used to be written once per adapter, and two of them had
@@ -36,7 +36,7 @@ import java.util.function.UnaryOperator;
  *   <li><b>Exclusive claims.</b> A given job is handed to at most one caller of {@link #claim} at a
  *       time, across every thread <em>and every process</em> sharing the storage.</li>
  *   <li><b>Claim ordering.</b> Highest {@code priority} first, then earliest {@code scheduledAt},
- *       then earliest {@code createdAt}, then id — one {@link JobSelection} every adapter renders,
+ *       then earliest {@code createdAt}, then id. One {@link JobSelection} every adapter renders,
  *       so a test written against one holds for the other. The id tiebreak makes the order total
  *       rather than universal; see {@link JobSelection} for what that does and does not buy.</li>
  *   <li><b>Lease ownership.</b> {@link #complete}, {@link #fail} and {@link #deadLetter} apply only
@@ -45,7 +45,7 @@ import java.util.function.UnaryOperator;
  *       worker that legitimately took the job over.</li>
  *   <li><b>Atomic transitions.</b> Each method is a single atomic unit against concurrent
  *       callers.</li>
- *   <li><b>One failure vocabulary.</b> Storage failures surface as {@link JobStoreException},
+ *   <li><b>One failure vocabulary.</b> Storage failures become {@link JobStoreException} values,
  *       whatever the underlying technology. "No such job" and "wrong state" are answers, not
  *       failures, and arrive as return values.</li>
  * </ol>
@@ -112,7 +112,8 @@ public final class JobStore implements AutoCloseable {
     // ---------------------------------------------------------------- claiming
 
     /**
-     * Atomically takes up to {@code limit} claimable jobs — {@link JobSelection#CLAIMABLE} —
+     * Atomically takes up to {@code limit} claimable jobs that match
+     * {@link JobSelection#CLAIMABLE},
      * moving each to RUNNING with a lease held by {@code workerId} until
      * {@code now + visibilityTimeout}.
      *
@@ -162,7 +163,7 @@ public final class JobStore implements AutoCloseable {
     }
 
     /**
-     * Returns {@link JobSelection#EXPIRED_LEASE} jobs to PENDING — the crash-recovery path. A worker
+     * Returns {@link JobSelection#EXPIRED_LEASE} jobs to PENDING, which is the crash-recovery path. A worker
      * that died mid-job leaves its row RUNNING forever otherwise.
      *
      * @return how many leases were reclaimed
@@ -174,8 +175,8 @@ public final class JobStore implements AutoCloseable {
     // ---------------------------------------------------------------- operator actions
 
     /**
-     * Cancels a job that has not started — {@link JobState#isCancellable()} is the rule — and
-     * removes the row (the lifecycle deliberately has no CANCELLED state). The decision and the
+     * Cancels a job that has not started. {@link JobState#isCancellable()} defines the rule. The
+     * method removes the row (the lifecycle deliberately has no CANCELLED state). The decision and the
      * removal happen in one atomic step, so a refusal carries the state that was actually observed.
      *
      * @return {@link JobActionResult.Done} with the removed snapshot, or why not
@@ -223,7 +224,7 @@ public final class JobStore implements AutoCloseable {
 
     /**
      * Loads a job exclusively, refuses unless the caller still holds its lease, applies the
-     * transition and writes it back — the one place that rule is stated.
+     * transition and writes it back. This is the one place that rule is stated.
      */
     private Optional<Job> transitionLeased(UUID id, String workerId, UnaryOperator<Job> transition) {
         Objects.requireNonNull(workerId, "workerId");

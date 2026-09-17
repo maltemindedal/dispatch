@@ -1,18 +1,17 @@
 # dispatch
 
-A job queue built from scratch on `java.util.concurrent` and PostgreSQL row locks — no RabbitMQ,
-no Kafka, no Redis, no queue library of any kind. Workers run on Java 21 virtual threads. Spring
-Boot appears only at the HTTP edge; the engine itself is plain Java that runs fine in a `main`
-method.
+A job queue built from scratch on `java.util.concurrent` and PostgreSQL row locks. It uses no
+RabbitMQ, Kafka, Redis, or queue library. Workers run on Java 21 virtual threads. Spring Boot
+appears only at the HTTP edge; the engine itself is plain Java that runs in a `main` method.
 
-The point is to understand the mechanics: how a job is claimed exactly once by one of several
-processes, what a visibility timeout actually buys you, why retry backoff needs jitter, and what
-"graceful shutdown" has to mean for work that is already in flight.
+The point is to understand how a job is claimed exactly once by one of several processes, what a
+visibility timeout does, why retry backoff needs jitter, and what "graceful shutdown" means for
+work that is already in flight.
 
 ## Quick start
 
-Needs a JDK (any recent one — Gradle downloads a Java 21 toolchain automatically if you don't
-have one) and, for the PostgreSQL profile and the integration tests, Docker.
+Needs a JDK. Gradle downloads a Java 21 toolchain automatically if you don't have one. The
+PostgreSQL profile and integration tests also need Docker.
 
 ```bash
 # In-memory H2, no Docker needed. Serves on http://localhost:8080
@@ -37,7 +36,7 @@ curl -s -X POST localhost:8080/jobs \
 curl -s localhost:8080/stats | jq
 ```
 
-Seeing `FAILED` on a fresh job is expected — it's waiting out a retry backoff, not broken. Set
+Seeing `FAILED` on a fresh job is expected. The job is waiting out a retry backoff. Set
 `dispatch.demo-handlers: false` to drop the simulators in a real deployment.
 
 With PostgreSQL:
@@ -51,33 +50,33 @@ The application creates its own schema at startup, so there is no migration step
 
 ## Documentation
 
-- **Tutorial** — [Getting started](docs/getting-started.md): zero to a running queue.
-- **Guides** — [writing a handler](docs/guides/writing-a-handler.md),
+- **Tutorial:** [Getting started](docs/getting-started.md), from zero to a running queue.
+- **Guides:** [writing a handler](docs/guides/writing-a-handler.md),
   [running multiple instances](docs/guides/running-multiple-instances.md).
-- **Reference** — [configuration](docs/reference/configuration.md),
+- **Reference:** [configuration](docs/reference/configuration.md),
   [REST API](docs/reference/api.md).
-- **Architecture** — [overview](docs/architecture/overview.md), the
+- **Architecture:** [overview](docs/architecture/overview.md), the
   [job lifecycle](docs/architecture/job-lifecycle.md),
   [reliability mechanics](docs/architecture/reliability.md), and
   [known limitations](docs/architecture/limitations.md).
 
-The annotated index — every document, what it covers, who it's for — is
+The annotated index lists every document, what it covers, and who it's for:
 [docs/README.md](docs/README.md).
 
 ## Project structure
 
 ```text
-dispatch-core/       The engine: domain model, state machine, worker pool, and JobStore —
+dispatch-core/       The engine: domain model, state machine, worker pool, and JobStore,
                      which owns every storage rule over a narrow JobRows seam.
-                     Depends on the JDK and SLF4J only — no Spring, no JDBC.
+                     Depends only on the JDK and SLF4J. It has no Spring or JDBC dependency.
 dispatch-postgres/   JdbcJobRows: one adapter at that seam, backing the same engine with
                      PostgreSQL or H2 via SELECT ... FOR UPDATE SKIP LOCKED. Still no Spring.
 dispatch-api/        Spring Boot: REST controllers, configuration properties, profile wiring.
 docs/                Documentation (see above).
 ```
 
-The dependency arrow only ever points inward — `dispatch-core` cannot see Spring or JDBC, which
-is enforced by the build rather than by good intentions.
+The dependency arrow only points inward. The build enforces that `dispatch-core` cannot see Spring
+or JDBC.
 
 ## Contributing
 

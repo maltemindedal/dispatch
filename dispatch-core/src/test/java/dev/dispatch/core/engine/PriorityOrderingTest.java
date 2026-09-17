@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
  * <p>Nothing here starts a dispatcher. The queue is driven a cycle at a time with
  * {@link JobQueue#dispatchOnce()}, so every assertion is about a value the engine returned rather
  * than about how fast a background thread got somewhere. There is no polling, no rendezvous latch
- * and no timing to tune — the concurrent case in particular used to need all three.
+ * and no timing to tune. The concurrent case in particular used to need all three.
  */
 @DisplayName("Priority and fairness")
 class PriorityOrderingTest {

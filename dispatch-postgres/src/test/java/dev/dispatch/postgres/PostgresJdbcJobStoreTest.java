@@ -15,7 +15,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * The shared store contract, run against real PostgreSQL in a container.
  *
  * <p>Same suite as the in-memory store and the H2 store. Three implementations, one set of
- * expectations — which is what "the persistence layer sits behind an interface" has to mean if it
+ * expectations. That is what "the persistence layer sits behind an interface" has to mean if it
  * is going to mean anything.
  */
 @Testcontainers

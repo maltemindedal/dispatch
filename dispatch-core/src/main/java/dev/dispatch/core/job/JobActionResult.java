@@ -7,12 +7,12 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * The engine's answer to an operator action on one job — cancel, manual retry.
+ * The engine's answer to an operator action on one job, such as cancel or manual retry.
  *
  * <p>The point of returning this rather than a boolean is that a refusal carries the state the
  * store actually observed, read in the same atomic step that refused the action. A caller can
- * report "job X is RUNNING; this needs one of [PENDING, SCHEDULED]" without a second read — which
- * could observe a different state — and without knowing the rule itself.
+ * report "job X is RUNNING; this needs one of [PENDING, SCHEDULED]" without a second read. A
+ * second read could observe a different state, and the caller does not need to know the rule.
  */
 public sealed interface JobActionResult {
 

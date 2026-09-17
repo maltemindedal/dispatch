@@ -13,7 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The configured concurrency is actually reachable — the docs promise that {@code concurrency}
+ * The configured concurrency is reachable. The docs promise that {@code concurrency}
  * caps jobs in flight, and this pins the cap from below as well as above.
  */
 @DisplayName("Worker pool concurrency")

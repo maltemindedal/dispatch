@@ -16,9 +16,9 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Permit conservation across the pool's shutdown paths. Shutdown races the dispatcher's claim
- * loop — the not-accepting early return, jobs finishing mid-drain, stragglers interrupted at the
- * deadline — and whatever combination fires, every permit must come home: a leak here would
- * silently shrink a restarted pool's capacity.
+ * loop. Whether the pool rejects new work, jobs finish during the drain, or stragglers are
+ * interrupted at the deadline, every permit must return. A leak here would
+ * reduce a restarted pool's capacity.
  */
 @DisplayName("Worker pool shutdown conservation")
 class WorkerPoolShutdownTest {

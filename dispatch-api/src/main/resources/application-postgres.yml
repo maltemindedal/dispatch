@@ -10,5 +10,5 @@ spring:
       # Needs headroom over `concurrency`: the dispatcher, the maintenance sweeper and every
       # finishing handler all want a connection, and starving them stalls the queue.
       maximum-pool-size: 24
-      # Hikari takes plain milliseconds here, not a Spring Duration — "10s" fails to bind.
+      # Hikari takes plain milliseconds here, not a Spring Duration. "10s" fails to bind.
       connection-timeout: 10000

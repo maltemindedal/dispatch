@@ -36,7 +36,7 @@ public class QueueConfiguration {
      * Picks the adapter for the store seam from the one typed {@code dispatch.store} property.
      * A typo fails at property binding with the valid values listed, not at bean resolution.
      *
-     * <p>The store itself is the same either way — only the row adapter behind it changes. The JDBC
+     * <p>The store itself is the same either way. Only the row adapter behind it changes. The JDBC
      * adapter serves PostgreSQL in production and H2 under the dev profile alike; see
      * {@code JdbcJobRows} for why the SQL is portable. The DataSource is resolved lazily so the
      * in-memory choice never touches it.
@@ -86,7 +86,7 @@ public class QueueConfiguration {
 
     /**
      * A straight hand-over: the builder itself treats null (and a blank worker id) as "keep the
-     * engine's default", so the defaults live in exactly one place — {@code QueueConfig.Builder}.
+     * engine's default", so the defaults live in exactly one place, {@code QueueConfig.Builder}.
      */
     @Bean
     QueueConfig queueConfig(QueueProperties properties) {

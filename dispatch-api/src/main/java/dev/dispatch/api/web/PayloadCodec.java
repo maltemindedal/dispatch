@@ -11,9 +11,9 @@ import org.springframework.stereotype.Component;
  * Converts job payloads between the JSON the API speaks and the opaque string the engine stores.
  *
  * <p>The engine deliberately treats payloads as bytes it never looks inside, which keeps
- * {@code dispatch-core} free of a JSON dependency and lets handlers pick their own format. Being the
- * layer that does speak JSON, the API translates at the boundary — the standard arrangement, and
- * the reason this class is one small thing rather than a concern smeared across the controllers.
+ * {@code dispatch-core} free of a JSON dependency and lets handlers pick their own format. The API
+ * speaks JSON and translates at the boundary, which keeps this class small instead of spreading
+ * the concern across the controllers.
  */
 @Component
 public class PayloadCodec {
@@ -42,7 +42,7 @@ public class PayloadCodec {
      *
      * <p>Anything that will not parse is returned as a JSON string rather than throwing. A payload
      * written by an older version of the app, or by hand, must not be able to make
-     * {@code GET /jobs/{id}} fail — being unable to read a job is far worse than seeing its
+     * {@code GET /jobs/{id}} fail. Being unable to read a job is far worse than seeing its
      * payload quoted.
      */
     public JsonNode fromStoredPayload(String payload) {

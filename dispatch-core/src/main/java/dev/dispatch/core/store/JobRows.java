@@ -10,15 +10,15 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Exclusive access to job rows — the storage seam, and nothing more.
+ * Exclusive access to job rows. This is the storage seam, and nothing more.
  *
  * <p>This is deliberately dumber than the {@link JobStore} above it. An adapter here answers
  * "hold these rows exclusively" and "write these rows back"; it decides nothing. Which rows are
  * claimable, what order they come in, when a cancel is refused, whether a worker still holds its
- * lease — all of that is {@link JobStore}'s, stated once, so two adapters cannot disagree about it.
+ * lease. {@link JobStore} owns all of that logic, stated once, so two adapters cannot disagree.
  * They used to, and did.
  *
- * <p>Two adapters exist: a map under a lock, and SQL rows under {@code FOR UPDATE}. That is what
+ * <p>Two adapters exist: a map under a lock and SQL rows under {@code FOR UPDATE}. That is what
  * makes this a real seam rather than a hypothetical one.
  *
  * <h2>What an implementation must guarantee</h2>
@@ -28,8 +28,8 @@ import java.util.function.Function;
  *       storage. Everything the scope read stays as it was read until the work returns. This is the
  *       one rule the whole design rests on.</li>
  *   <li><b>All or nothing.</b> If the work throws, nothing it wrote is visible.</li>
- *   <li><b>One failure vocabulary.</b> Storage failures — a lost connection, a broken schema —
- *       surface as {@link JobStoreException}, whatever the underlying technology.</li>
+ *   <li><b>One failure vocabulary.</b> Storage failures, such as a lost connection or broken
+ *       schema, become {@link JobStoreException} values, whatever the underlying technology.</li>
  * </ol>
  */
 public interface JobRows extends AutoCloseable {
@@ -37,7 +37,7 @@ public interface JobRows extends AutoCloseable {
     /**
      * Runs {@code work} with exclusive access to the rows it touches, and returns its result.
      *
-     * <p>Implementations acquire whatever they need — a lock, a transaction — before the work runs
+     * <p>Implementations acquire what they need, such as a lock or transaction, before the work runs
      * and release it after, committing on a normal return and discarding on a throw.
      */
     <R> R inExclusiveScope(Function<Scope, R> work);
@@ -68,7 +68,7 @@ public interface JobRows extends AutoCloseable {
          * Takes up to {@code limit} rows belonging to {@code selection} at {@code now}, in the
          * selection's order.
          *
-         * <p><b>Skips</b> rows another caller already holds rather than waiting for them — that is
+         * <p><b>Skips</b> rows another caller already holds rather than waiting for them. That is
          * what lets N instances claim from one queue without a coordinator, each walking past the
          * rows its peers are taking. A caller therefore gets "up to {@code limit} rows that were
          * free", never a guarantee it saw every matching row.

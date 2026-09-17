@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Job endpoints.
  *
- * <p>Thin by design — parse, delegate to {@link JobQueue}, map the result to a status code. The
+ * <p>Thin by design. Parse, delegate to {@link JobQueue}, and map the result to a status code. The
  * only real thinking here is the 404-versus-409 distinction on the two mutating endpoints: "no
  * such job" and "that job is in the wrong state for this" are different problems and deserve
  * different answers.
@@ -105,7 +105,7 @@ public class JobController {
     }
 
     /**
-     * Cancels a job that has not started. Cancelling deletes the row — the lifecycle has no
+     * Cancels a job that has not started. Cancelling deletes the row. The lifecycle has no
      * CANCELLED state, because a job nobody ran leaves nothing worth keeping.
      *
      * @return 204 on success, 404 if it does not exist, 409 if it is already running or finished

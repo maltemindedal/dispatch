@@ -1,29 +1,29 @@
 # Documentation index
 
-Everything here is grounded in the code; when a document and the code disagree, the code wins and
-the document has a bug — please report it.
+These documents describe the code. When a document and the code disagree, the code wins and the
+document has a bug. Please report it.
 
-## Tutorial — learning by doing
+## Tutorial: learning by doing
 
 | Document | What it covers | For whom |
 | --- | --- | --- |
 | [Getting started](getting-started.md) | Clone to a running queue: start the app, submit jobs, watch retries, switch to PostgreSQL. | Newcomers to the project. |
 
-## How-to guides — one task per page
+## How-to guides: one task per page
 
 | Document | What it covers | For whom |
 | --- | --- | --- |
 | [Writing a handler](guides/writing-a-handler.md) | Registering a job type, idempotency, permanent failures, payload handling. | Anyone adding a job type. |
 | [Running multiple instances](guides/running-multiple-instances.md) | Two processes on one queue: exclusive claiming, crash recovery, graceful drain. | Anyone exploring the multi-instance behaviour. |
 
-## Reference — lookup, exhaustive and factual
+## Reference: lookup, exhaustive and factual
 
 | Document | What it covers | For whom |
 | --- | --- | --- |
 | [Configuration](reference/configuration.md) | Every `dispatch.*` key with type, default, and effect; profiles; environment variables; datasource tuning. | Operators and integrators. |
 | [REST API](reference/api.md) | All endpoints, request and response shapes, validation rules, status codes, problem responses. | API clients. |
 
-## Explanation — how it works and why
+## Explanation: how it works and why
 
 | Document | What it covers | For whom |
 | --- | --- | --- |

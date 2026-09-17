@@ -1,7 +1,7 @@
 # Writing a handler
 
-A handler is a `JobHandler` — one method, `handle(JobContext)` — paired with the job type it
-serves. This guide covers registering one under Spring and getting its semantics right.
+A handler is a `JobHandler` with one method, `handle(JobContext)`, paired with the job type it
+serves. This guide covers registering one under Spring and its runtime behavior.
 
 ## Register the handler
 
@@ -18,8 +18,8 @@ JobHandlerRegistration generateReport(ReportService reports) {
 }
 ```
 
-That is the whole integration surface. Handlers stay plain `JobHandler` lambdas with no Spring in
-them — the registration record is what keeps the framework out of `dispatch-core`.
+That is the complete integration point. Handlers stay plain `JobHandler` lambdas with no Spring in
+them. The registration record keeps the framework out of `dispatch-core`.
 
 Submissions for a type with no registered handler are rejected at the API with `422`, listing the
 types that do exist, rather than being allowed to retry their way to the dead-letter state.
@@ -32,8 +32,8 @@ types that do exist, rather than being allowed to retry their way to the dead-le
   get better on the fourth attempt; send it straight to `DEAD`.
 - **Be idempotent.** Delivery is at-least-once: a worker can finish your handler and die before
   recording the result, and the job will run again elsewhere. Design so that running twice is
-  harmless — see [Reliability mechanics](../architecture/reliability.md#delivery-is-at-least-once).
-- **Blocking I/O is fine.** Each job runs on its own virtual thread; blocking calls are cheap and
+  harmless. See [Reliability mechanics](../architecture/reliability.md#delivery-is-at-least-once).
+- **Blocking I/O is fine.** Each job runs on its own virtual thread. Blocking calls are cheap and
   expected. Don't reach for reactive wrappers on the handler's account.
 - **Finish inside the visibility timeout** (`5m` by default). A handler that outruns its lease
   gets its job re-delivered to another worker while it is still running, and its own result is
@@ -44,23 +44,23 @@ types that do exist, rather than being allowed to retry their way to the dead-le
 
 | Method | Meaning |
 | --- | --- |
-| `payload()` | The JSON document from the submission, verbatim, as a `String`. The engine never parses it — use whatever JSON library your handler prefers, or keep it opaque. |
+| `payload()` | The JSON document from the submission, verbatim, as a `String`. The engine never parses it. Use whatever JSON library your handler prefers, or keep it opaque. |
 | `jobId()`, `type()`, `job()` | Identity and, if you need it, the full job snapshot. |
 | `attempt()` | 1-based: `1` on the first run, `2` on the first retry. |
 | `maxRetries()`, `isFinalAttempt()` | The budget, and whether a failure here dead-letters instead of retrying. |
 | `workerId()` | Which instance is running this attempt. |
 | `leaseExpiresAt()`, `leaseExpired(now)` | The visibility deadline. Long-running handlers should check this and bail out rather than plough on past their lease. |
-| `isCancelled()` | Cooperative cancellation — true once graceful shutdown has interrupted this thread. Poll it in tight non-blocking loops; blocking calls get the interrupt directly. |
+| `isCancelled()` | Reports whether graceful shutdown has interrupted this thread. Poll it in tight non-blocking loops; blocking calls get the interrupt directly. |
 
-Errors thrown by a handler are recorded on the job (`lastError`, truncated to 2000 characters) —
-full stack traces belong in your logs.
+Errors thrown by a handler are recorded on the job (`lastError`, truncated to 2000 characters).
+Write full stack traces to your logs.
 
 ## The bundled simulators
 
 Two demo handlers ship in `dispatch-core` and register themselves by default:
 
 - **`send-email`** fails ~30% of attempts with a simulated transient error, and fails
-  *permanently* if the payload has no `"to"` field — the transient-versus-fatal distinction the
+  *permanently* if the payload has no `"to"` field. This is the transient-versus-fatal distinction the
   retry machinery exists to draw.
 - **`resize-image`** takes a variable amount of time, useful for watching in-flight counts and
   drain behaviour.

@@ -12,7 +12,7 @@ public final class InMemoryJobHandlerRegistry implements JobHandlerRegistry {
     private final Map<String, JobHandler> handlers = new ConcurrentHashMap<>();
 
     /**
-     * @throws IllegalStateException if the type is already taken — silently replacing a handler is
+     * @throws IllegalStateException if the type is already taken. Silently replacing a handler is
      *         the kind of thing you discover in production, so it is refused here
      */
     public InMemoryJobHandlerRegistry register(String type, JobHandler handler) {

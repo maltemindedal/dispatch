@@ -12,29 +12,29 @@
 ```bash
 ./gradlew build                   # compile + every test in every module
 ./gradlew test                    # tests only
-./gradlew :dispatch-core:test     # engine tests only — fast, no Docker
+./gradlew :dispatch-core:test     # engine tests only, fast, no Docker
 ./gradlew :dispatch-api:bootRun   # run the app locally (H2, port 8080)
 ```
 
-The suite is around 180 tests (as of 2026-08; run `./gradlew test` for the current count), and the timing-heavy
-ones are driven by a controllable clock rather than sleeps, so the whole thing is fast and not
-flaky.
+The suite has around 180 tests (as of 2026-08; run `./gradlew test` for the current count). The
+timing-heavy tests use a controllable clock instead of sleeps, which keeps the suite fast and
+avoids flaky timing.
 
 ## Test architecture
 
-The tests that carry the most weight, and the pattern behind them:
+These tests cover the main contracts and execution paths:
 
-- **`JobStoreContract`** (`dispatch-core`, test fixtures) — one suite of store-behaviour tests,
+- **`JobStoreContract`** (`dispatch-core`, test fixtures): one suite of store-behaviour tests,
   run against all three stores: `InMemoryJobStoreTest`, `H2JdbcJobStoreTest`, and
   `PostgresJdbcJobStoreTest` all extend it. Every store must claim exclusively, order by priority
   then age, reject writes from a worker that lost its lease, and reclaim expired leases. This is
-  what makes the adapters genuinely interchangeable — any new `JobRows` adapter should extend the
+  what makes the adapters interchangeable. Any new `JobRows` adapter should extend the
   contract before anything else.
-- **`ConcurrentInstancesIntegrationTest`** (`dispatch-postgres`) — two engine instances with
+- **`ConcurrentInstancesIntegrationTest`** (`dispatch-postgres`): two engine instances with
   separate connection pools against one containerised PostgreSQL, 300 jobs, asserting every job
   executed exactly once, that both instances did work, and that a job orphaned by a "crashed"
   instance is recovered by its peer.
-- **`PriorityOrderingTest`**, **`DispatchCycleTest`** (`dispatch-core`) — never start a
+- **`PriorityOrderingTest`**, **`DispatchCycleTest`** (`dispatch-core`): never start a
   dispatcher. They call `JobQueue.dispatchOnce()`, which runs one claim-and-dispatch cycle on the
   calling thread and returns what it claimed, then `awaitCompletion` on that batch. Assertions land
   on returned values instead of on how fast a background thread got somewhere; the whole priority
@@ -42,14 +42,14 @@ The tests that carry the most weight, and the pattern behind them:
   anything about *what* the engine does, and leave a running dispatcher to tests about *how it
   runs*.
 - **`RetryAndDeadLetterTest`**, **`VisibilityTimeoutTest`**, **`ScheduledJobTest`**
-  (`dispatch-core`) — driven by `MutableClock` (a test fixture), so "wait out the backoff" is an
+  (`dispatch-core`): use `MutableClock` (a test fixture), so "wait out the backoff" is an
   assignment rather than a `Thread.sleep`.
-- **`GracefulShutdownTest`** — uses real wall-clock time, because draining is the one thing where
+- **`GracefulShutdownTest`**: uses real wall-clock time because draining is the one case where
   actual elapsed time is the behaviour under test.
-- **`JobSchemaTest`** (`dispatch-postgres`) — races twelve threads through schema creation ten
+- **`JobSchemaTest`** (`dispatch-postgres`): races twelve threads through schema creation ten
   times over: the regression test for the
   [concurrent-bootstrap race](architecture/reliability.md#schema-creation-is-a-race).
-- **`JobApiTest`** / **`PostgresEndToEndTest`** (`dispatch-api`) — the HTTP surface against the
+- **`JobApiTest`** / **`PostgresEndToEndTest`** (`dispatch-api`): test the HTTP endpoints against the
   in-memory store, and the full stack against containerised PostgreSQL.
 
 ## CI

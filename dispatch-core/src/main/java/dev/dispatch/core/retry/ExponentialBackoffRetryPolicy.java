@@ -18,8 +18,8 @@ import java.util.random.RandomGenerator;
  * jitter" (uniform over {@code [0, ceiling)}), and the default {@code 0.5} keeps at least half the
  * nominal delay while still breaking up convoys.
  *
- * <p>Jitter is the point, not a decoration: without it, a batch of jobs that fail together —
- * because the same downstream service was down — retries in lockstep forever, and every retry
+ * <p>Jitter is the point, not a decoration. Without it, a batch of jobs that fail together because
+ * the same downstream service was down retries in lockstep forever, and every retry
  * wave hits that service simultaneously.
  */
 public final class ExponentialBackoffRetryPolicy implements RetryPolicy {

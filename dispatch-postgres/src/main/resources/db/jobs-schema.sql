@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- Backs the claim query: state first (equality), then the exact ORDER BY the claim uses, so
 -- claiming is an index range scan rather than a sort over the whole table.
 --
--- On PostgreSQL alone this is better as a partial index —
+-- On PostgreSQL alone this is better as a partial index.
 --   CREATE INDEX ... ON jobs (priority DESC, scheduled_at, created_at) WHERE state = 'PENDING'
 -- which keeps completed jobs out of the index entirely. H2 has no partial indexes, so the
 -- portable composite form is used here.

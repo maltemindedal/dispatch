@@ -23,7 +23,7 @@ stateDiagram-v2
 ```
 
 The diagram shows the transitions the running system actually takes. `JobState` declares three
-more as legal — `PENDING → DEAD`, `SCHEDULED → DEAD`, and `FAILED → DEAD` — as headroom for an
+more as legal, `PENDING → DEAD`, `SCHEDULED → DEAD`, and `FAILED → DEAD`, to leave room for an
 operational "kill" that no code path currently performs: today the only way into `DEAD` is from
 `RUNNING`, and removing an unstarted job is done by cancellation, which deletes the row.
 
@@ -36,7 +36,7 @@ operational "kill" that no code path currently performs: today the only way into
 | `FAILED` | An attempt failed; a retry is pending once the backoff at `scheduledAt` elapses. |
 | `DEAD` | Retries exhausted or permanently failed. The dead-letter state; only a manual retry revives it. |
 
-## Three distinctions worth internalising
+## Three distinctions worth remembering
 
 These are what the six states are *for*:
 
@@ -44,7 +44,7 @@ These are what the six states are *for*:
   claiming until it passes. `SCHEDULED` means "delayed, never attempted"; `FAILED` means
   "attempted, waiting out a backoff". Collapsing them would make `GET /stats` unable to
   distinguish a healthy backlog from a retry storm.
-- **`FAILED` vs `DEAD`.** `FAILED` is transient — a sweeper will promote it. `DEAD` is the
+- **`FAILED` vs `DEAD`.** `FAILED` is transient. A sweeper will promote it. `DEAD` is the
   dead-letter state, and only an operator (`POST /jobs/{id}/retry`) gets a job out of it.
 - **There is no `CANCELLED`.** Cancelling a job that never ran deletes the row. A state whose
   only meaning is "this never happened" is a row you keep forever for no reason.
@@ -58,7 +58,7 @@ These are what the six states are *for*:
   `locked_until`.
 - **The handler outcome** moves `RUNNING` to `COMPLETED`, `FAILED` (retries left, backoff
   scheduled), or `DEAD` (budget exhausted, or `PermanentJobFailureException`).
-- **The maintenance sweeper** — on any instance — promotes due `SCHEDULED` and `FAILED` rows to
+- **The maintenance sweeper**, on any instance, promotes due `SCHEDULED` and `FAILED` rows to
   `PENDING`, and returns `RUNNING` rows with expired leases to `PENDING`
   ([crash recovery](reliability.md#visibility-timeout)).
 - **Operators** revive `DEAD → PENDING` with a fresh budget via the API.

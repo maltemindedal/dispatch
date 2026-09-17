@@ -140,7 +140,7 @@ public record Job(
 
     /**
      * RUNNING -> PENDING: the worker vanished and its lease expired, so the job goes back on the
-     * queue. The attempt counter is left alone — the attempt happened, we simply never heard how
+     * queue. The attempt counter is left alone. The attempt happened, and we simply never heard how
      * it ended, and charging it against the retry budget is the safe reading.
      */
     public Job leaseExpired(Instant now) {

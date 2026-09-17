@@ -28,9 +28,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The dispatch cycle as an operation in its own right.
+ * Tests the dispatch cycle directly.
  *
- * <p>The worker pool used to expose only its lifecycle — start, shut down, wake up — so the only
+ * <p>The worker pool used to expose only its lifecycle, including start, shutdown, and wake-up, so the only
  * way to observe a claim was to start a thread and watch the store until something changed. These
  * pin the operation that replaced that: what one cycle claims, what it reports, and the rule that
  * two claimers must not share a pool.
@@ -138,7 +138,7 @@ class DispatchCycleTest {
         // The first dispatchOnce() call does one-time setup, gated by a STARTING state so a
         // second caller cannot pass the ownership guard while the executor is still null. The
         // window that guards against is a few instructions wide, and this test does not manage
-        // to hit it even with the guard removed — so read it as a smoke test of the contract
+        // to hit it even with the guard removed. Read it as a smoke test of the contract
         // ("a cycle, or an IllegalStateException, never anything else"), not as proof of the
         // fix. The fix is by construction; see dispatchOnce().
         registry.register("record", context -> { });
@@ -172,8 +172,8 @@ class DispatchCycleTest {
     void queueStartAfterDrivingLeavesNothingBehind() throws Exception {
         registry.register("record", context -> { });
         AtomicInteger sweeps = new AtomicInteger();
-        // Every store operation crosses the JobRows seam exactly once, so counting scopes is
-        // enough to see whether anything ran — no need to fake individual Scope methods.
+        // Every store operation crosses the JobRows boundary exactly once, so counting scopes is
+        // enough to see whether anything ran. There is no need to fake individual Scope methods.
         JobRows real = new InMemoryJobRows();
         JobRows counting = new JobRows() {
             @Override

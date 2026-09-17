@@ -1,13 +1,13 @@
 # Getting started
 
-This walks you from a fresh clone to a running queue, first against in-memory H2 (no Docker),
-then against PostgreSQL. Budget about ten minutes.
+This guide takes you from a fresh clone to a running queue. You will use in-memory H2 first, then
+PostgreSQL. Allow about ten minutes.
 
 ## Prerequisites
 
-- **A JDK.** Any recent one works: the build declares a Java 21 toolchain and the
+- **A JDK.** Any recent one works. The build declares a Java 21 toolchain, and the
   [foojay resolver](../settings.gradle.kts) downloads one automatically if you don't have it.
-- **Docker** — only for the PostgreSQL section and the integration tests. The H2 path needs none.
+- **Docker**, only for the PostgreSQL section and the integration tests. The H2 path needs none.
 
 ## 1. Run the application
 
@@ -15,9 +15,9 @@ then against PostgreSQL. Budget about ten minutes.
 ./gradlew :dispatch-api:bootRun
 ```
 
-This starts Spring Boot on `http://localhost:8080` with the default `dev` profile: an in-memory
-H2 database that the application creates its own schema in at startup. There is no migration step
-and nothing else to set up.
+This starts Spring Boot on `http://localhost:8080` with the default `dev` profile. The application
+uses an in-memory H2 database and creates its schema at startup. There is no migration step or
+other setup.
 
 You should see log lines like:
 
@@ -27,7 +27,7 @@ Registered job handlers: [resize-image, send-email]
 Job queue worker-3f2a91bc started with handlers for [resize-image, send-email]
 ```
 
-Those two handlers are bundled simulators, there so the queue has something to do out of the box.
+Those handlers are bundled simulators so the queue has work to process.
 
 ## 2. Submit a job
 
@@ -39,7 +39,7 @@ curl -s -X POST localhost:8080/jobs \
   -d '{"type":"send-email","payload":{"to":"someone@example.com","subject":"Hi"},"maxRetries":5}'
 ```
 
-The response is `201 Created` with the stored job — note the `id`, `state` (`PENDING`), and
+The response is `201 Created` with the stored job. Note the `id`, `state` (`PENDING`), and
 `attempt` (`0`). A `Location` header points at the new resource.
 
 Fetch it back a moment later:
@@ -48,7 +48,7 @@ Fetch it back a moment later:
 curl -s localhost:8080/jobs/<id> | jq
 ```
 
-By now it has most likely reached `COMPLETED`. If it shows `FAILED` instead, you got lucky: the
+By now it has most likely reached `COMPLETED`. If it shows `FAILED` instead, that is expected: the
 `send-email` simulator fails about 30% of its attempts on purpose, and `FAILED` means the job is
 waiting out a retry backoff. Fetch again after a second or two and watch `attempt` climb until it
 completes.
@@ -66,31 +66,31 @@ done
 curl -s localhost:8080/stats | jq
 ```
 
-`queueDepth` shows jobs per lifecycle state across the whole store; `thisInstance` shows what this
-process has done. With a 30% simulated failure rate you will see `failedAttempts` and
-`retriesScheduled` climb alongside `succeeded` — that is the retry machinery doing its job.
+`queueDepth` shows jobs per lifecycle state across the whole store. `thisInstance` shows what this
+process has done. With a 30% simulated failure rate, `failedAttempts` and `retriesScheduled` will
+increase alongside `succeeded` as retries run.
 The fields are documented in the [API reference](reference/api.md#get-stats).
 
 ## 4. See a job dead-letter
 
-Submit a payload the simulator treats as permanently broken — no `"to"` field:
+Submit a payload the simulator treats as permanently broken, with no `"to"` field:
 
 ```bash
 curl -s -X POST localhost:8080/jobs -H 'Content-Type: application/json' \
   -d '{"type":"send-email","payload":{"subject":"no recipient"}}' | jq .id
 ```
 
-The handler throws a permanent failure, so the job skips its remaining retries and lands in
-`DEAD` — the dead-letter state — immediately. Only an operator can revive it:
+The handler throws a permanent failure, so the job skips its remaining retries and immediately
+lands in `DEAD`, the dead-letter state. Only an operator can revive it:
 
 ```bash
 curl -s 'localhost:8080/jobs?status=DEAD' | jq '.[].id'
 curl -s -X POST localhost:8080/jobs/<id>/retry | jq .state   # back to PENDING, fresh budget
 ```
 
-(It will dead-letter again, of course — the payload is still missing its recipient. That
-distinction between transient and permanent failure is the point of the demo; see
-[Writing a handler](guides/writing-a-handler.md).)
+It will dead-letter again because the payload still lacks a recipient. That distinction between
+transient and permanent failure is the point of the demo. See
+[Writing a handler](guides/writing-a-handler.md).
 
 ## 5. Switch to PostgreSQL
 
@@ -103,8 +103,8 @@ docker compose up -d
 
 `docker compose` starts PostgreSQL 17 with database, user, and password all `dispatch` (see
 [docker-compose.yml](../docker-compose.yml)). The application again creates its own schema at
-startup. Everything from steps 2–4 works identically — same store class, same SQL — but now the
-queue is durable and shareable: restart the app and unfinished jobs are still there.
+startup. Everything from steps 2–4 works the same way with the same store class and SQL. The queue
+now survives restarts, and multiple app instances can share it.
 
 ## Where next
 

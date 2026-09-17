@@ -104,7 +104,7 @@ class JobTest {
         Job reclaimed = running.leaseExpired(NOW.plus(LEASE));
         assertThat(reclaimed.state()).isEqualTo(JobState.PENDING);
         assertThat(reclaimed.lockedBy()).isNull();
-        // The attempt still counts against the budget — we simply never learned how it ended.
+        // The attempt still counts against the budget. The store never learned how it ended.
         assertThat(reclaimed.attempt()).isEqualTo(1);
         assertThat(reclaimed.lastError()).contains("worker-1");
     }

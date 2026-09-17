@@ -75,7 +75,8 @@ public record QueueConfig(
     /**
      * Mutable builder; the record itself stays immutable.
      *
-     * <p>Every setter treats {@code null} — and, for the worker id, blank — as "not configured":
+     * <p>Every setter treats {@code null} as "not configured". The worker id also treats blank
+     * values that way:
      * the field keeps its default. That is what lets an adapter binding external configuration
      * hand its values straight over, and it puts the defaults in exactly one place, here.
      */
@@ -89,7 +90,7 @@ public record QueueConfig(
         private int maintenanceBatchSize = 500;
         private Duration shutdownDrainTimeout = Duration.ofSeconds(30);
 
-        /** Null or blank keeps the generated id — replicas must never share one. */
+        /** Null or blank keeps the generated id. Replicas must never share one. */
         public Builder workerId(String value) {
             if (value != null && !value.isBlank()) {
                 this.workerId = value;
@@ -155,7 +156,7 @@ public record QueueConfig(
     /**
      * Hostname-ish plus a random suffix. The suffix matters: two containers from the same image
      * would otherwise share a worker id and could steal each other's leases. This is the one
-     * place worker ids are minted — anything wiring the engine up should call it rather than
+     * place worker ids are minted. Code wiring the engine should call it rather than
      * invent its own scheme.
      */
     public static String generateWorkerId() {

@@ -12,7 +12,7 @@ public interface RetryPolicy {
      */
     Duration backoffAfter(int attempt);
 
-    /** No waiting at all — handy in tests where you want the retry to land immediately. */
+    /** No waiting at all; handy in tests where you want the retry to land immediately. */
     static RetryPolicy immediate() {
         return attempt -> Duration.ZERO;
     }

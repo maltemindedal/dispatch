@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The clock is frozen and driven by hand, so "wait out the backoff" is an assignment rather
  * than a sleep. Maintenance runs on a 20ms timer, so once the clock says a job is due the sweeper
- * picks it up almost immediately — fast tests that still exercise the real promotion path.
+ * picks it up almost immediately. The tests remain fast while exercising the real promotion path.
  */
 @DisplayName("Retries, backoff and dead-lettering")
 class RetryAndDeadLetterTest {
@@ -223,7 +223,7 @@ class RetryAndDeadLetterTest {
     void unknownJobTypeAtExecutionEventuallyDies() {
         // Another instance submitted this (simulated by inserting straight into the shared
         // store); this instance claims it without having the handler. Per ADR-0001 that is
-        // retryable — a rolling deploy may put the handler on a peer — until the budget runs out.
+        // retryable. A rolling deploy may put the handler on a peer until the budget runs out.
         startQueue(RetryPolicy.immediate());
 
         Job job = store.insert(new JobSubmission("nobody-handles-this", "{}", 0, 1, null),

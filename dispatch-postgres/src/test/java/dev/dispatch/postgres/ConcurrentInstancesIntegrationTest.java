@@ -32,7 +32,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * The test this whole design exists to pass: two application instances, one database, and no job
  * ever processed twice.
  *
- * <p>The two instances are as separate as they can be inside one JVM — their own connection pools,
+ * <p>The two instances are separate inside one JVM. Each has its own connection pool,
  * their own stores, their own worker ids, their own dispatchers and sweepers. The only thing they
  * share is the {@code jobs} table, which is exactly the production arrangement: two containers
  * behind a load balancer, one PostgreSQL.
@@ -195,7 +195,7 @@ class ConcurrentInstancesIntegrationTest {
         Duration visibilityTimeout = Duration.ofSeconds(2);
 
         // Simulate an instance that claimed a job and was then killed: the row is RUNNING, held
-        // by a worker id that will never report a result. Staged before the survivor starts —
+        // by a worker id that will never report a result. Stage it before the survivor starts,
         // a live instance's dispatcher would legitimately race the doomed claim for the row.
         java.time.Instant now = java.time.Instant.now();
         Job job;
@@ -212,7 +212,7 @@ class ConcurrentInstancesIntegrationTest {
 
         Instance survivor = startInstance("instance-survivor", visibilityTimeout);
 
-        // No coordination, no failover protocol: the surviving instance's sweeper simply notices
+        // No coordination or failover protocol is needed. The surviving instance's sweeper notices
         // the lapsed lease and puts the job back.
         await().atMost(Duration.ofSeconds(60)).untilAsserted(() -> {
             assertThat(survivor.store().find(job.id()).orElseThrow().state())
@@ -223,7 +223,7 @@ class ConcurrentInstancesIntegrationTest {
     }
 
     @Test
-    @DisplayName("priority ordering holds across instances, not just within one")
+    @DisplayName("priority ordering holds across instances and within each instance")
     void priorityHoldsAcrossInstances() {
         // Load the whole backlog before anything is running, so no instance can get a head start
         // on the low-priority jobs and make the ordering claim untestable.

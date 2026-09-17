@@ -20,14 +20,15 @@ import java.util.stream.Stream;
  *
  * <p>Concurrency model: one {@link ReentrantLock} spans each exclusive scope, which gives the same
  * atomicity a database transaction does. Because the lock is reentrant and held for the whole
- * scope, a scope sees a still world — the same guarantee {@code FOR UPDATE} buys the JDBC adapter.
+ * scope, a scope sees a consistent snapshot. This is the same guarantee {@code FOR UPDATE} gives the
+ * JDBC adapter.
  *
  * <p>Three differences from a database are worth knowing. There is no rollback: a scope that throws
  * leaves behind whatever it had already written, which is acceptable because
  * {@code dev.dispatch.core.store.JobStore} never writes before its last decision. Reads take the
- * same lock writes do, so a listing sees a consistent world but contends with claiming — the right
+ * same lock writes do, so a listing sees a consistent snapshot but contends with claiming. That is the right
  * trade for a store whose job is tests and demos, and the reason this one is not the production
- * choice. And selections are answered by scanning and sorting the whole map — O(n log n) per claim,
+ * choice. Selections are answered by scanning and sorting the whole map, which takes O(n log n) per claim,
  * the first thing to fix at scale, but it renders exactly the same {@link JobSelection} the SQL
  * adapter does, which matters more: the two adapters are meant to be indistinguishable, and one
  * contract suite proves it.

@@ -93,14 +93,14 @@ public enum JobState {
     }
 
     /**
-     * True when a job in this state may be cancelled — i.e. it has not started. Once a worker
+     * True when a job in this state may be cancelled. It has not started. Once a worker
      * holds the lease there is nothing safe to cancel from outside.
      */
     public boolean isCancellable() {
         return this == PENDING || this == SCHEDULED;
     }
 
-    /** The states {@link #isCancellable()} accepts — derived from it, for reporting refusals. */
+    /** The states accepted by {@link #isCancellable()}, derived from it for refusal reporting. */
     public static Set<JobState> cancellableStates() {
         return CANCELLABLE;
     }

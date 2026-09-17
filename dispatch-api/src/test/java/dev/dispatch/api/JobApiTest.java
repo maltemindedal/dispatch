@@ -33,7 +33,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * The REST surface, exercised against the in-memory store.
  *
  * <p>Jobs are mostly submitted with a future {@code scheduledAt} so they sit still while the test
- * asserts on them — the queue is genuinely running in this context, and a job submitted for "now"
+ * asserts on them. The queue is genuinely running in this context, and a job submitted for "now"
  * would be finished before the assertion ran.
  */
 @SpringBootTest(properties = {

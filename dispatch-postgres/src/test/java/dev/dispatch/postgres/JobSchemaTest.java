@@ -95,7 +95,7 @@ class JobSchemaTest {
     @DisplayName("survives several instances initializing at the same instant")
     void toleratesConcurrentInitialization() throws Exception {
         int instances = 12;
-        // The collision window is narrow — PostgreSQL mostly serialises these — so the test runs
+        // The collision window is narrow because PostgreSQL mostly serialises these, so the test runs
         // several rounds from an empty schema. Without the fix this reliably fails within a few
         // rounds; with it, none of them so much as log a warning.
         int rounds = 10;
