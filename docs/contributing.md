@@ -85,5 +85,6 @@ The dependency arrow points inward only:
 - `dispatch-postgres` depends on `dispatch-core` and JDBC. Still no Spring.
 - `dispatch-api` is the only module that knows Spring exists.
 
-Compiler warnings are treated seriously: the build compiles with `-Xlint:all`. Keep new code
-warning-clean.
+Compiler warnings fail the build: it compiles with `-Xlint:all -Werror`, and the tree is at zero
+warnings. Fix the cause rather than adding a `@SuppressWarnings`, unless the suppression is
+genuinely the right answer for that line and says why.
