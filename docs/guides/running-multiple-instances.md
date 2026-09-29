@@ -79,11 +79,30 @@ The `postgres` profile reads its connection from environment variables, defaulti
 compose container:
 
 ```bash
-export DISPATCH_DB_URL=jdbc:postgresql://db.example.com:5432/dispatch
+export DISPATCH_DB_URL='jdbc:postgresql://db.example.com:5432/dispatch?sslmode=verify-full&sslrootcert=/etc/ssl/certs/db-ca.pem'
 export DISPATCH_DB_USER=dispatch
 export DISPATCH_DB_PASSWORD=...
 ```
 
+Two things to know about that connection. The PostgreSQL driver's default is `sslmode=prefer`,
+which tries TLS but neither verifies the server's certificate nor refuses to fall back to plain
+text, so a remote database wants `verify-full` as above. (`verify-ca` and `verify-full` read the
+CA certificate from `sslrootcert`, or from `~/.postgresql/root.crt`, not from the JVM truststore,
+and fail if it is missing.) And the `dispatch`/`dispatch` credentials that `docker-compose.yml` and
+the profile's defaults use exist only for the local demo container; never point them at a real
+database.
+
 Schema creation at startup is safe to run from several instances simultaneously. The concurrent
 bootstrap race is handled deliberately
 ([details](../architecture/reliability.md#schema-creation-is-a-race)).
+
+## Keep the clocks in sync
+
+Each instance stamps and judges leases with its own clock: a claim sets
+`locked_until = now + visibility-timeout` using the claimer's time, and whichever instance's
+sweeper runs next compares it with its own. Run NTP (or chrony) on every host. Skew comes out of
+the same margin as your slowest handler's run time: a peer whose clock is 10 seconds ahead sees a
+`5m` lease as `4m50s`, and a claimer whose clock is behind delays crash recovery by the skew. The
+cost is duplicate work, with `leasesReclaimed` and `leasesLost` rising in `/stats`, not corruption:
+handlers must be idempotent anyway, and a result is only recorded by the worker that still holds the
+lease.

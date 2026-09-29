@@ -14,7 +14,10 @@ services:
       POSTGRES_USER: dispatch
       POSTGRES_PASSWORD: dispatch
     ports:
-      - "5432:5432"
+      # Loopback only: this database has a well-known password and no TLS, so it is for the app
+      # and tests on this machine. To reach it from another host or container, publish it on
+      # that address deliberately.
+      - "127.0.0.1:5432:5432"
     volumes:
       - dispatch-pgdata:/var/lib/postgresql/data
     healthcheck:

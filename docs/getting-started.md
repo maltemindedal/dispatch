@@ -27,6 +27,10 @@ Registered job handlers: [resize-image, send-email]
 Job queue worker-3f2a91bc started with handlers for [resize-image, send-email]
 ```
 
+The last line comes after the web server is listening: the queue starts claiming work only once
+the whole application is up, so an instance that fails to start (the port is taken, say) has not
+run anything.
+
 Those handlers are bundled simulators so the queue has work to process.
 
 ## 2. Submit a job
@@ -102,8 +106,8 @@ docker compose up -d
 ```
 
 `docker compose` starts PostgreSQL 17 with database, user, and password all `dispatch` (see
-[docker-compose.yml](../docker-compose.yml)). The application again creates its own schema at
-startup. Everything from steps 2–4 works the same way with the same store class and SQL. The queue
+[docker-compose.yml](../docker-compose.yml)), published on `127.0.0.1` only because that password
+is public. The application again creates its own schema at startup. Everything from steps 2–4 works the same way with the same store class and SQL. The queue
 now survives restarts, and multiple app instances can share it.
 
 ## Where next

@@ -12,7 +12,6 @@ dependencies {
 
     testFixturesApi(rootProject.libs.junit.jupiter)
     testFixturesApi(rootProject.libs.assertj)
-    testFixturesApi(rootProject.libs.awaitility)
 
     testRuntimeOnly(rootProject.libs.logback.classic)
 }

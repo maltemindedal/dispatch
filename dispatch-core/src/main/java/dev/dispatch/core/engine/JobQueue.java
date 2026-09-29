@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +50,13 @@ public final class JobQueue implements AutoCloseable {
     private final WorkerPool workers;
     private final QueueMaintenance maintenance;
 
+    /**
+     * Serialises {@link #start()} with {@link #shutdown}. Starting is two steps (pool, then
+     * sweeper); a shutdown landing between them would close a sweeper that does not exist yet, and
+     * the sweeper would then be created after the queue was closed and run for ever.
+     */
+    private final ReentrantLock lifecycle = new ReentrantLock();
+
     private JobQueue(Builder builder) {
         this.store = Objects.requireNonNull(builder.store, "store");
         this.registry = Objects.requireNonNull(builder.registry, "registry");
@@ -76,8 +84,13 @@ public final class JobQueue implements AutoCloseable {
      * @throws IllegalStateException if the pool was already started, or is being driven by hand
      */
     public JobQueue start() {
-        workers.start();
-        maintenance.start();
+        lifecycle.lock();
+        try {
+            workers.start();
+            maintenance.start();
+        } finally {
+            lifecycle.unlock();
+        }
         log.info("Job queue {} started with handlers for {}", config.workerId(),
                 registry.registeredTypes());
         return this;
@@ -199,14 +212,19 @@ public final class JobQueue implements AutoCloseable {
      * @return true if every in-flight job finished within the deadline
      */
     public boolean shutdown(Duration drainDeadline) {
-        maintenance.close();
-        boolean drained = workers.shutdown(drainDeadline);
+        lifecycle.lock();
         try {
-            store.close();
-        } catch (Exception e) {
-            log.warn("Job store did not close cleanly", e);
+            maintenance.close();
+            boolean drained = workers.shutdown(drainDeadline);
+            try {
+                store.close();
+            } catch (Exception e) {
+                log.warn("Job store did not close cleanly", e);
+            }
+            return drained;
+        } finally {
+            lifecycle.unlock();
         }
-        return drained;
     }
 
     @Override

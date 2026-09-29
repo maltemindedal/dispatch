@@ -22,7 +22,9 @@ PostgreSQL profile and integration tests also need Docker.
 ```
 
 The app is ready when it logs
-`Job queue worker-... started with handlers for [resize-image, send-email]`. Submit a job and
+`Job queue worker-... started with handlers for [resize-image, send-email]`, which comes after the
+web server is listening: the queue does not claim work until the whole application is up. Submit a
+job and
 watch it run:
 
 ```bash
@@ -38,6 +40,9 @@ curl -s localhost:8080/stats | jq
 
 Seeing `FAILED` on a fresh job is expected. The job is waiting out a retry backoff. Set
 `dispatch.demo-handlers: false` to drop the simulators in a real deployment.
+
+The API has no authentication and listens on all interfaces. Keep it on a trusted network or behind
+a reverse proxy that authenticates (see [known limitations](docs/architecture/limitations.md)).
 
 With PostgreSQL:
 

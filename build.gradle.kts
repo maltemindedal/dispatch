@@ -1,7 +1,6 @@
 plugins {
     java
     alias(libs.plugins.spring.boot) apply false
-    alias(libs.plugins.spring.dependency.management) apply false
 }
 
 allprojects {
@@ -31,7 +30,7 @@ subprojects {
 
     tasks.withType<JavaCompile>().configureEach {
         options.encoding = "UTF-8"
-        options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-processing"))
+        options.compilerArgs.addAll(listOf("-Xlint:all", "-Xlint:-processing", "-Werror"))
     }
 
     tasks.withType<Test>().configureEach {
@@ -40,7 +39,5 @@ subprojects {
             events("passed", "skipped", "failed")
             exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
         }
-        // Tests exercise virtual threads and timing-sensitive queue behaviour.
-        systemProperty("java.util.logging.manager", "java.util.logging.LogManager")
     }
 }

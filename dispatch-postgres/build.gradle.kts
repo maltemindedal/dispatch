@@ -7,9 +7,8 @@ description = "JDBC-backed JobStore (PostgreSQL / H2). Still no Spring."
 dependencies {
     api(project(":dispatch-core"))
 
-    // Drivers stay out of the API surface: the caller supplies a configured DataSource.
-    compileOnly(rootProject.libs.postgresql)
-    compileOnly(rootProject.libs.h2)
+    // No JDBC driver here: the adapter speaks only java.sql, and the caller supplies a configured
+    // DataSource (and with it, the driver).
 
     testImplementation(testFixtures(project(":dispatch-core")))
     testImplementation(rootProject.libs.postgresql)

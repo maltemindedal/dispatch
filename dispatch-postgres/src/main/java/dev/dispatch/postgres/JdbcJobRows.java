@@ -109,21 +109,41 @@ public final class JdbcJobRows implements JobRows {
      * Runs {@code work} in one transaction, committing on success and rolling back on any failure.
      * Explicit transactions are not optional here: {@code FOR UPDATE} row locks live and die with
      * the transaction, so autocommit would release every lock the instant the select returned.
+     *
+     * <p>"Any failure" includes an {@link Error}. Restoring auto-commit at the end matters here:
+     * switching it on inside an open transaction commits that transaction, so a scope left
+     * unrolled-back by an {@code Error} would have its partial work committed. A failure while
+     * rolling back or while restoring auto-commit is attached to the failure that caused it as a
+     * suppressed exception, never allowed to replace it.
      */
     @Override
     public <R> R inExclusiveScope(Function<Scope, R> work) {
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
+            Throwable failure = null;
             try {
                 R result = work.apply(new TransactionScope(connection));
                 connection.commit();
                 return result;
-            } catch (RuntimeException e) {
-                connection.rollback();
-                throw e;
+            } catch (Throwable t) {
+                failure = t;
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    t.addSuppressed(rollbackFailure);
+                }
+                throw t;
             } finally {
-                connection.setAutoCommit(previousAutoCommit);
+                try {
+                    connection.setAutoCommit(previousAutoCommit);
+                } catch (SQLException restoreFailure) {
+                    if (failure == null) {
+                        // Committed, but the connection is unusable afterwards: say so, as before.
+                        throw restoreFailure;
+                    }
+                    failure.addSuppressed(restoreFailure);
+                }
             }
         } catch (SQLException e) {
             throw new JobStoreException("Job store operation failed: " + e.getMessage(), e);

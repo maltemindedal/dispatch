@@ -2,11 +2,11 @@ package dev.dispatch.api.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.NullNode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.NullNode;
 
 /**
  * The codec's whole reason to exist is its documented promise: a payload that will not parse must
@@ -23,8 +23,8 @@ class PayloadCodecTest {
     void unparseablePayloadNeverBreaksARead() {
         JsonNode node = codec.fromStoredPayload("{oops, hand-written");
 
-        assertThat(node.isTextual()).isTrue();
-        assertThat(node.asText()).isEqualTo("{oops, hand-written");
+        assertThat(node.isString()).isTrue();
+        assertThat(node.asString()).isEqualTo("{oops, hand-written");
     }
 
     @Test

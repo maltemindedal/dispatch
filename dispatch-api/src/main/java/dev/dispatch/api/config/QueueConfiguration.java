@@ -17,6 +17,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -103,13 +105,13 @@ public class QueueConfiguration {
     }
 
     /**
-     * The queue itself.
+     * The queue itself, built but not started: see {@link #queueStarter} for when it starts.
      *
      * <p>{@code destroyMethod = "close"} is what satisfies the graceful-shutdown requirement: on
      * SIGTERM Spring stops accepting HTTP requests (see {@code server.shutdown: graceful}), then
      * destroys this bean, which stops claiming and drains in-flight jobs within the configured
      * deadline. Anything still running past that deadline is interrupted and lands back on the
-     * queue for another instance.
+     * queue for another instance. Closing a queue that never started is a no-op.
      */
     @Bean(destroyMethod = "close")
     JobQueue jobQueue(
@@ -124,8 +126,20 @@ public class QueueConfiguration {
                 .retryPolicy(retryPolicy)
                 .config(config)
                 .clock(clock)
-                .build()
-                .start();
+                .build();
+    }
+
+    /**
+     * Starts the queue once the application is fully up, not while the beans are still being
+     * created. Started from inside the bean method, the queue was already claiming and running
+     * jobs when a later bean failed or the port turned out to be taken, so an instance that never
+     * came up had still consumed work (and, with a real handler, done its side effects). Requests
+     * that arrive in the moments before this fires are accepted and simply wait for it: submitting
+     * only inserts a row.
+     */
+    @Bean
+    ApplicationListener<ApplicationReadyEvent> queueStarter(JobQueue queue) {
+        return event -> queue.start();
     }
 
     // ------------------------------------------------------------ demo handlers

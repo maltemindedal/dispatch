@@ -40,10 +40,12 @@ not available to a queue that talks to the outside world, and pretending otherwi
 bug somewhere harder to find.
 
 What the engine *does* guarantee is that a stalled worker cannot corrupt the record: every write
-of a result is conditional on still holding the lease
-(`WHERE state = 'RUNNING' AND locked_by = ?`). A worker that overran its visibility timeout finds
-its update rejected, counts a lost lease (`leasesLost` in `/stats`), and gets out of the way of
-whoever took the job over.
+of a result is conditional on still holding the lease *as the attempt that claimed it* (the row is
+`RUNNING`, `locked_by` is this worker, and `attempt` is the attempt number this worker was handed).
+A worker that overran its visibility timeout finds its update rejected, counts a lost lease
+(`leasesLost` in `/stats`), and gets out of the way of whoever took the job over. That includes
+itself: if the same instance reclaims and re-runs the job as attempt 2, attempt 1's late result is
+rejected too, rather than landing on attempt 2.
 
 ## Visibility timeout
 
@@ -52,7 +54,11 @@ sits in `RUNNING` with a lease nobody will ever release, and the maintenance swe
 instance returns it to `PENDING`. That reclaim is the entire crash-recovery story.
 
 The reclaimed attempt still counts against the retry budget. That is deliberate: a job that
-reliably kills its worker would otherwise retry forever.
+reliably kills its worker would otherwise retry forever. So when the attempt that was lost was the
+last one the budget allowed (`maxRetries + 1` attempts in all), the sweeper dead-letters the job
+(`DEAD`, with an explanation in `lastError`) instead of returning it to `PENDING`. The same holds
+for a handler that simply outruns the visibility timeout on its last attempt: with no heartbeat
+(see [limitations](limitations.md)), the engine cannot tell it from a crash.
 
 Set `visibility-timeout` comfortably above your slowest handler. Too short and healthy jobs get
 run twice; too long and crash recovery crawls.

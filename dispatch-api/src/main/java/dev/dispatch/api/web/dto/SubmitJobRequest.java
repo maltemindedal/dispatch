@@ -1,10 +1,10 @@
 package dev.dispatch.api.web.dto;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Body of {@code POST /jobs}.
@@ -22,7 +22,9 @@ import java.time.Instant;
  * @param payload     arbitrary JSON, stored verbatim and handed to the handler untouched
  * @param priority    higher runs first; omit for the normal band
  * @param maxRetries  retries beyond the first attempt; omit for 3
- * @param scheduledAt run no earlier than this instant; omit to run as soon as possible
+ * @param scheduledAt run no earlier than this instant; omit to run as soon as possible. Must fall
+ *                    in years 0001 to 9999 (see {@code JobSubmission.EARLIEST_SCHEDULED_AT});
+ *                    anything else is a 400
  */
 public record SubmitJobRequest(
         @NotBlank(message = "type is required")

@@ -29,7 +29,7 @@ class QueueConfigurationTest {
         QueueProperties properties = new QueueProperties(
                 StoreType.MEMORY, "worker-7", 32, 4,
                 Duration.ofMillis(100), Duration.ofMinutes(2), Duration.ofSeconds(5), 100,
-                Duration.ofSeconds(7), new Retry(null, null, null, null), false);
+                Duration.ofSeconds(7), new Retry(null, null, null, null), false, 1024L);
 
         QueueConfig config = configuration.queueConfig(properties);
 
@@ -48,7 +48,7 @@ class QueueConfigurationTest {
     void unsetPropertiesKeepEngineDefaults() {
         QueueProperties properties = new QueueProperties(
                 StoreType.MEMORY, "", null, null, null, null, null, null, null,
-                new Retry(null, null, null, null), false);
+                new Retry(null, null, null, null), false, 1024L);
 
         QueueConfig config = configuration.queueConfig(properties);
         QueueConfig defaults = QueueConfig.defaults();
@@ -96,6 +96,6 @@ class QueueConfigurationTest {
 
     private static QueueProperties propertiesWithRetry(Retry retry) {
         return new QueueProperties(StoreType.MEMORY, "", null, null, null, null, null, null, null,
-                retry, false);
+                retry, false, 1024L);
     }
 }

@@ -1,10 +1,10 @@
 package dev.dispatch.api.web.dto;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobState;
 import java.time.Instant;
 import java.util.UUID;
+import tools.jackson.databind.JsonNode;
 
 /**
  * A job as the API presents it.

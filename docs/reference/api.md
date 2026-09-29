@@ -35,15 +35,22 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `type` | string, ≤ 255 chars | yes | Handler routing key. |
-| `payload` | any JSON | no | Stored verbatim and handed to the handler untouched. `null`/absent is stored as `{}`. |
+| `payload` | any JSON | no | Stored verbatim and handed to the handler untouched. `null`/absent is stored as `{}`. The whole request body is limited to 1 MiB by default (see the `413` response below). |
 | `priority` | integer | no | Higher runs first; omit for the normal band (`0`). |
 | `maxRetries` | integer ≥ 0 | no | Retries beyond the first attempt. Default `3`. |
-| `scheduledAt` | ISO-8601 instant | no | Run no earlier than this. Omit to run as soon as possible. A future instant submits the job as `SCHEDULED`. |
+| `scheduledAt` | ISO-8601 instant | no | Run no earlier than this. Omit to run as soon as possible. A future instant submits the job as `SCHEDULED`. Must lie between `0001-01-01T00:00:00Z` and `9999-12-31T23:59:59.999999999Z`; anything outside is a `400`. |
 
 **Responses**
 
 - `201 Created`: the [job](#the-job-resource), with a `Location: /jobs/{id}` header.
-- `400 Bad Request`: validation failure. The problem document carries a per-field `errors` map.
+- `400 Bad Request`: validation failure (the problem document carries a per-field `errors` map),
+  or a body that is missing, is not JSON, or is JSON of the wrong shape (a string where a number
+  belongs, an instant that does not parse). The latter has a fixed detail and does not quote the
+  body.
+- `413 Content Too Large`: the body is larger than [`dispatch.max-payload-bytes`](configuration.md)
+  (1 MiB by default) or nests deeper than 64 levels. It is refused while it is being read, before it
+  is held in memory whole.
+- `415 Unsupported Media Type`: the `Content-Type` is not `application/json`.
 - `422 Unprocessable Entity`: no handler is registered for `type`. The message lists the types
   that exist.
 
@@ -124,11 +131,11 @@ The response separates cluster-wide facts from process-local ones:
 | `failedAttempts` | Attempts that threw here. |
 | `retriesScheduled` | Failures put back on the queue with a backoff. |
 | `deadLettered` | Jobs this instance moved to `DEAD`. |
-| `leasesReclaimed` | Abandoned leases this instance's sweeper recovered. |
+| `leasesReclaimed` | Abandoned leases this instance's sweeper took back: the job went to `PENDING`, or to `DEAD` if that was its last permitted attempt. |
 | `leasesLost` | Results that could not be recorded because the lease was gone. |
 | `inFlight` | Jobs running right now. |
 | `failureRate` | Failed attempts over finished attempts, in [0, 1]. Per *attempt*, not per job: a job that fails twice then succeeds contributes two failures and one success. |
-| `averageExecutionMs` | Mean handler wall time. |
+| `averageExecutionMs` | Mean wall time of a run, in milliseconds with the fraction: from the start of the attempt until its outcome was recorded, so it includes the store round trip, not only the handler. |
 
 ## The job resource
 
@@ -175,5 +182,14 @@ Problem documents per RFC 9457, `Content-Type: application/problem+json`:
 }
 ```
 
-Validation failures (`400`) also carry an `errors` object mapping field names to
-messages.
+Validation failures (`400`) also carry an `errors` object mapping field names to messages. A
+request body the server cannot read at all is a `400` with the title `Invalid request` and the fixed
+detail `The request body is missing or is not valid JSON of the expected shape`; what exactly was
+wrong is in the server's debug log. When the job store itself fails (a lost database connection, an
+exhausted pool) the answer is `500` with the title `Job store unavailable` and a fixed detail; the
+cause is in the server log, not in the response.
+
+Requests the framework rejects before they reach the API (an unknown path, an unsupported method or
+media type) are not problem documents. They get Spring Boot's default error object,
+`{"timestamp": ..., "status": 404, "error": "Not Found", "path": "/nope"}`, with
+`Content-Type: application/json` and no `message`.

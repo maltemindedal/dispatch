@@ -1,16 +1,22 @@
 package dev.dispatch.api.web;
 
+import dev.dispatch.api.config.QueueProperties;
+import dev.dispatch.api.config.RequestLimits;
 import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.IllegalJobTransitionException;
+import dev.dispatch.core.store.JobStoreException;
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import tools.jackson.core.exc.StreamConstraintsException;
 
 /**
  * Turns domain exceptions into RFC 9457 problem responses, so clients get a machine-readable body
@@ -20,6 +26,19 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    /**
+     * The documented {@code type} of every error body. Set explicitly: it used to be the
+     * framework's default, and a framework that stops supplying one would silently drop the field
+     * from the JSON.
+     */
+    private static final URI ABOUT_BLANK = URI.create("about:blank");
+
+    private final long maxPayloadBytes;
+
+    ApiExceptionHandler(QueueProperties properties) {
+        this.maxPayloadBytes = properties.maxPayloadBytes();
+    }
 
     @ExceptionHandler(JobNotFoundException.class)
     ProblemDetail handleNotFound(JobNotFoundException e) {
@@ -37,7 +56,7 @@ public class ApiExceptionHandler {
      */
     @ExceptionHandler(UnknownJobTypeException.class)
     ProblemDetail handleUnknownType(UnknownJobTypeException e) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "Unknown job type", e.getMessage());
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Unknown job type", e.getMessage());
     }
 
     /**
@@ -48,6 +67,18 @@ public class ApiExceptionHandler {
     ProblemDetail handleIllegalTransition(IllegalJobTransitionException e) {
         log.warn("Illegal job transition surfaced through the API", e);
         return problem(HttpStatus.CONFLICT, "Illegal job transition", e.getMessage());
+    }
+
+    /**
+     * The store failed: a lost connection, an exhausted pool, a rejected statement. Its message
+     * names drivers, pools and SQL, which is for the log and not for the caller, so the response
+     * carries a fixed description and the detail stays server-side.
+     */
+    @ExceptionHandler(JobStoreException.class)
+    ProblemDetail handleStoreFailure(JobStoreException e) {
+        log.error("Job store failure", e);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Job store unavailable",
+                "The job store could not complete the request");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -61,6 +92,34 @@ public class ApiExceptionHandler {
         return problem;
     }
 
+    /**
+     * A body that is missing, is not JSON, or is JSON of the wrong shape (a string where a number
+     * belongs, an instant that does not parse). The framework's own message here is Jackson's: it
+     * quotes the offending text and names Java classes and fields, so the response carries a
+     * fixed description and the specifics stay in the debug log.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleUnreadableBody(HttpMessageNotReadableException e) {
+        log.debug("Unreadable request body", e);
+        if (causedByLimit(e)) {
+            return problem(HttpStatus.CONTENT_TOO_LARGE, "Request body too large",
+                    "The request body is larger than the " + maxPayloadBytes + " bytes this server"
+                            + " accepts, or nests deeper than " + RequestLimits.MAX_NESTING_DEPTH
+                            + " levels");
+        }
+        return problem(HttpStatus.BAD_REQUEST, "Invalid request",
+                "The request body is missing or is not valid JSON of the expected shape");
+    }
+
+    private static boolean causedByLimit(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof StreamConstraintsException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Covers bad query parameters too. An unrecognised {@code ?status=} lands here. */
     @ExceptionHandler(IllegalArgumentException.class)
     ProblemDetail handleIllegalArgument(IllegalArgumentException e) {
@@ -69,6 +128,7 @@ public class ApiExceptionHandler {
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setType(ABOUT_BLANK);
         problem.setTitle(title);
         return problem;
     }

@@ -54,13 +54,4 @@ public final class MutableClock extends Clock {
         now.updateAndGet(current -> current.plus(amount).truncatedTo(ChronoUnit.MILLIS));
         return this;
     }
-
-    public MutableClock advanceSeconds(long seconds) {
-        return advance(Duration.ofSeconds(seconds));
-    }
-
-    public MutableClock setTo(Instant instant) {
-        now.set(instant.truncatedTo(ChronoUnit.MILLIS));
-        return this;
-    }
 }

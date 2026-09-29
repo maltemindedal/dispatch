@@ -101,12 +101,24 @@ public record Job(
     }
 
     /**
-     * True while {@code workerId} holds this job's visibility lease. Stores check this before
-     * recording any result: a worker that stalled past its visibility timeout must not overwrite
-     * whoever legitimately took the job over.
+     * True while {@code workerId} holds this job's visibility lease. It says nothing about
+     * <em>which attempt</em> holds it: the same worker that lost a lease and claimed the job again
+     * satisfies this for the old attempt and the new one alike. Recording an outcome therefore
+     * uses {@link #leaseHeldBy(String, int)}.
      */
     public boolean leaseHeldBy(String workerId) {
         return state == JobState.RUNNING && workerId.equals(lockedBy);
+    }
+
+    /**
+     * True while {@code workerId} holds this job's visibility lease <em>as attempt
+     * {@code attempt}</em>. Stores check this before recording any result: a worker that stalled
+     * past its visibility timeout must not overwrite whoever took the job over, and neither may an
+     * earlier attempt of the same worker overwrite the attempt that superseded it. The attempt
+     * number is the one on the snapshot the claim returned.
+     */
+    public boolean leaseHeldBy(String workerId, int attempt) {
+        return leaseHeldBy(workerId) && this.attempt == attempt;
     }
 
     /** PENDING -> RUNNING: takes a visibility lease and counts the attempt. */
@@ -141,13 +153,32 @@ public record Job(
     /**
      * RUNNING -> PENDING: the worker vanished and its lease expired, so the job goes back on the
      * queue. The attempt counter is left alone. The attempt happened, and we simply never heard how
-     * it ended, and charging it against the retry budget is the safe reading.
+     * it ended, and charging it against the retry budget is the safe reading. The sweeper calls
+     * {@link #reclaimed}, which applies this only while a retry is left.
      */
     public Job leaseExpired(Instant now) {
         state.requireTransitionTo(JobState.PENDING);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.PENDING,
                 now, createdAt, now, null, null,
                 "Visibility timeout expired; job reclaimed from worker " + lockedBy);
+    }
+
+    /**
+     * What the sweeper does with a RUNNING job whose lease lapsed: back to PENDING for another
+     * attempt, unless that attempt was the last one the retry budget allowed, in which case the
+     * job is dead-lettered.
+     *
+     * <p>A worker that dies mid-job never reaches {@code WorkerPool}'s failure path, which is the
+     * only other place the budget is checked. Without this check a job that reliably kills its
+     * worker (an out-of-memory kill, a native crash) would be reclaimed and re-claimed forever,
+     * each pass taking down another worker.
+     */
+    public Job reclaimed(Instant now) {
+        if (retriesExhausted()) {
+            return deadLettered("Visibility timeout expired on the last permitted attempt; worker "
+                    + lockedBy + " never reported back", now);
+        }
+        return leaseExpired(now);
     }
 
     /** SCHEDULED/FAILED -> PENDING: the delay or backoff elapsed and the job is claimable again. */

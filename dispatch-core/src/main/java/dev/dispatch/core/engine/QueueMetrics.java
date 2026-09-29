@@ -1,5 +1,6 @@
 package dev.dispatch.core.engine;
 
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -20,7 +21,8 @@ public final class QueueMetrics {
     private final LongAdder deadLettered = new LongAdder();
     private final LongAdder leasesReclaimed = new LongAdder();
     private final LongAdder leasesLost = new LongAdder();
-    private final LongAdder executionMillis = new LongAdder();
+    private final LongAdder executionNanos = new LongAdder();
+    private final LongAdder runsFinished = new LongAdder();
     private final AtomicInteger inFlight = new AtomicInteger();
 
     void jobSubmitted() {
@@ -35,9 +37,14 @@ public final class QueueMetrics {
         inFlight.incrementAndGet();
     }
 
-    void jobFinished(long durationMillis) {
+    /**
+     * A run of the handler ended, however it ended. Time and count go in together, so the mean
+     * over them stays a mean even for runs whose result could not be recorded (a lost lease).
+     */
+    void jobFinished(Duration elapsed) {
         inFlight.decrementAndGet();
-        executionMillis.add(durationMillis);
+        executionNanos.add(elapsed.toNanos());
+        runsFinished.increment();
     }
 
     void jobSucceeded() {
@@ -111,12 +118,20 @@ public final class QueueMetrics {
      * that fails twice and then succeeds contributes two failures and one success.
      */
     public double failureRate() {
-        long total = attemptsFinished();
-        return total == 0 ? 0.0 : (double) failedAttempts.sum() / total;
+        // Each counter is read once. Reading the failures again after computing the total let a
+        // failure that landed in between push the rate above 1.
+        long failed = failedAttempts.sum();
+        long total = succeeded.sum() + failed;
+        return total == 0 ? 0.0 : (double) failed / total;
     }
 
+    /**
+     * Mean wall time of a run: from the start of the attempt until its outcome was recorded (or
+     * failed to be), so it includes the store round trip and not just the handler. Averaged over
+     * every run that finished, whether or not its result was recorded.
+     */
     public double averageExecutionMillis() {
-        long total = attemptsFinished();
-        return total == 0 ? 0.0 : (double) executionMillis.sum() / total;
+        long runs = runsFinished.sum();
+        return runs == 0 ? 0.0 : executionNanos.sum() / 1_000_000.0 / runs;
     }
 }

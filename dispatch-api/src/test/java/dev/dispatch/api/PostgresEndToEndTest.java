@@ -12,17 +12,18 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
@@ -48,14 +49,15 @@ import org.testcontainers.utility.DockerImageName;
 // container's connection details. That is deliberate: a property this file gets wrong (a Hikari
 // setting written as a Duration, say) should fail here rather than at the first real startup.
 @ActiveProfiles("postgres")
+@AutoConfigureTestRestTemplate
 @Import(TestHandlers.class)
 @DisplayName("End to end on PostgreSQL")
 class PostgresEndToEndTest {
 
     @Container
     @SuppressWarnings("resource")
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>(DockerImageName.parse("postgres:17-alpine"))
+    static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"))
                     .withDatabaseName("dispatch")
                     .withUsername("dispatch")
                     .withPassword("dispatch");
@@ -86,14 +88,14 @@ class PostgresEndToEndTest {
         JobResponse job = created.getBody();
         assertThat(job).isNotNull();
         assertThat(job.state()).isEqualTo(JobState.PENDING);
-        assertThat(job.payload().get("to").asText()).isEqualTo("someone@example.com");
+        assertThat(job.payload().get("to").asString()).isEqualTo("someone@example.com");
 
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
             JobResponse current = rest.getForObject("/jobs/" + job.id(), JobResponse.class);
             assertThat(current.state()).isEqualTo(JobState.COMPLETED);
             assertThat(current.attempt()).isEqualTo(1);
             // The payload survived the round trip through a TEXT column unchanged.
-            assertThat(current.payload().get("to").asText()).isEqualTo("someone@example.com");
+            assertThat(current.payload().get("to").asString()).isEqualTo("someone@example.com");
         });
     }
 
@@ -146,6 +148,34 @@ class PostgresEndToEndTest {
         ResponseEntity<String> afterCancel =
                 rest.getForEntity("/jobs/" + job.id(), String.class);
         assertThat(afterCancel.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("a scheduledAt PostgreSQL cannot store is refused, and the queue keeps working")
+    void unstorableScheduleIsRefusedAndDoesNotJamTheQueue() {
+        // Before the range check this row was stored as '-infinity', sorted first in every claim,
+        // and made every later claim throw, so nothing else ever ran. Highest priority makes it
+        // the first row the claim would reach.
+        Map<String, Object> poison = Map.of(
+                "type", TestHandlers.OK,
+                "payload", Map.of(),
+                "priority", Integer.MAX_VALUE,
+                "scheduledAt", "-100000-01-01T00:00:00Z");
+        ResponseEntity<String> refused = rest.postForEntity("/jobs", poison, String.class);
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        Map<String, Object> tooLate = Map.of(
+                "type", TestHandlers.OK,
+                "payload", Map.of(),
+                "scheduledAt", "+300000-01-01T00:00:00Z");
+        assertThat(rest.postForEntity("/jobs", tooLate, String.class).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        JobResponse healthy = rest.postForObject("/jobs", Map.of(
+                "type", TestHandlers.OK, "payload", Map.of()), JobResponse.class);
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(rest.getForObject("/jobs/" + healthy.id(), JobResponse.class).state())
+                        .isEqualTo(JobState.COMPLETED));
     }
 
     @Test

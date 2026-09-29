@@ -1,11 +1,12 @@
 package dev.dispatch.api.web;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.NullNode;
-import com.fasterxml.jackson.databind.node.TextNode;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.NullNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.StringNode;
 
 /**
  * Converts job payloads between the JSON the API speaks and the opaque string the engine stores.
@@ -20,6 +21,13 @@ public class PayloadCodec {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * Reads what is already stored. The application's mapper carries the request size limit, and a
+     * row written before that limit existed may exceed it; it must still come back as the JSON it
+     * is. Jackson's own defaults apply here, as they did before the limit.
+     */
+    private final ObjectMapper storedReader = JsonMapper.builderWithJackson2Defaults().build();
+
     public PayloadCodec(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
@@ -31,7 +39,7 @@ public class PayloadCodec {
         }
         try {
             return objectMapper.writeValueAsString(payload);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             // Jackson round-tripping a JsonNode it just parsed should not fail.
             throw new IllegalArgumentException("Payload could not be serialized", e);
         }
@@ -50,9 +58,9 @@ public class PayloadCodec {
             return NullNode.getInstance();
         }
         try {
-            return objectMapper.readTree(payload);
-        } catch (JsonProcessingException e) {
-            return TextNode.valueOf(payload);
+            return storedReader.readTree(payload);
+        } catch (JacksonException e) {
+            return StringNode.valueOf(payload);
         }
     }
 }

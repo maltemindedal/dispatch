@@ -17,11 +17,12 @@ exactly one place, and `application.yml` restates them.
 | `concurrency` | int ≥ 1 | `16` | Maximum jobs in flight on this instance. Also sizes the claim-capacity gate, so the engine never claims work it has no room to run. |
 | `claim-batch-size` | int ≥ 1 | `8` | Jobs claimed per database round trip. |
 | `poll-interval` | duration | `250ms` | How long an idle dispatcher parks before polling again. Submissions on this instance wake it early, so this only bounds the pickup latency of work created elsewhere. |
-| `visibility-timeout` | duration | `5m` | How long a claim stays exclusive before the job is deemed abandoned. Must comfortably exceed your slowest handler, or healthy jobs get run twice. |
+| `visibility-timeout` | duration | `5m` | How long a claim stays exclusive before the job is deemed abandoned. Must comfortably exceed your slowest handler, or healthy jobs get run twice. Instances judge leases with their own clocks, so keep them [synchronised](../guides/running-multiple-instances.md#keep-the-clocks-in-sync). |
 | `maintenance-interval` | duration | `1s` | How often the sweeper promotes due jobs and reclaims expired leases. |
-| `maintenance-batch-size` | int ≥ 1 | `500` | Row cap per maintenance pass, keeping those statements short. |
+| `maintenance-batch-size` | int ≥ 1 | `500` | Row cap per maintenance pass, keeping those statements short. Together with the interval this caps how fast delayed and backing-off jobs become claimable: at most this many per pass, so 500 per second at the defaults. If you expect bursts of due jobs (a big retry storm, many jobs scheduled for the same minute), shorten `maintenance-interval` to `100ms`–`200ms` rather than raising the batch size; an idle sweep costs a fraction of a millisecond. |
 | `shutdown-drain-timeout` | duration | `30s` | How long shutdown waits for in-flight jobs before interrupting them. |
 | `demo-handlers` | boolean | `true` | Register the bundled `send-email` and `resize-image` simulators. Turn off in a real deployment. |
+| `max-payload-bytes` | int ≥ 1 | `1048576` (1 MiB) | The largest `POST /jobs` body the API parses, in bytes. A larger one is refused with `413` before it is turned into a tree in memory, which is several times the size of the bytes it came from. The JSON parser checks as it reads, in steps of its input buffer (about 8 KB), so a body can pass the limit by up to that much before it is refused. A request may also nest at most 64 levels (the payload 63), which is not configurable. Applies to requests only: a payload already stored is read back whatever its size. This is an API setting; the engine itself accepts a payload of any size. |
 
 Durations use Spring's syntax: `250ms`, `30s`, `5m`.
 
@@ -45,13 +46,19 @@ The default profile is `dev` (set via `spring.profiles.default` in `application.
 ### The dev profile (local development)
 
 [`application-dev.yml`](../../dispatch-api/src/main/resources/application-dev.yml). In-memory H2
-(`jdbc:h2:mem:dispatch`), no Docker required, `dev.dispatch` logging at DEBUG, and the H2 web
-console enabled at `/h2-console`.
+(`jdbc:h2:mem:dispatch`), no Docker required, and `dev.dispatch` logging at DEBUG. The H2 web
+console is off; start with `DISPATCH_H2_CONSOLE=true` to serve it at `/h2-console` (H2 answers
+only peers on the local machine). It can run SQL and, through H2's own features, arbitrary code,
+which is why it does not come on by itself.
 
 The same `JdbcJobRows` adapter runs here as against PostgreSQL, with the same SQL and claim query. What H2
 does not reproduce is contention behaviour: its locking is coarser, so a second instance pointed
 at the same H2 database gets empty claims rather than the next unlocked rows. Single instance is
 fine; for anything multi-instance, use the `postgres` profile.
+
+H2 also cannot use an index to order a `FOR UPDATE` query, so a claim scans every `PENDING` row:
+about 1 ms with a thousand pending jobs, 8 ms at ten thousand, 50 ms at fifty thousand. That is
+plenty for development; use the `postgres` profile for large backlogs.
 
 ### The postgres profile
 

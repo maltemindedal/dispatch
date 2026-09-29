@@ -24,9 +24,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * The test this whole design exists to pass: two application instances, one database, and no job
@@ -46,8 +46,8 @@ class ConcurrentInstancesIntegrationTest {
 
     @Container
     @SuppressWarnings("resource")
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>(PostgresTestSupport.IMAGE)
+    static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer(PostgresTestSupport.IMAGE)
                     .withDatabaseName("dispatch")
                     .withUsername("dispatch")
                     .withPassword("dispatch");

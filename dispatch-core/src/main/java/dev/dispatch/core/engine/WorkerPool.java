@@ -146,24 +146,40 @@ public final class WorkerPool implements AutoCloseable {
 
     private void dispatchLoop() {
         log.debug("Dispatcher {} running", Thread.currentThread().getName());
+        // Converted once, and outside the try: Duration.toNanos() throws for an interval beyond
+        // about 292 years, and it used to be called again inside the error handler below, where a
+        // throw ended the dispatcher thread for good.
+        long pollNanos = nanosSaturating(config.pollInterval());
         while (accepting) {
             try {
                 if (dispatchCycle().isEmpty()) {
                     // Nothing was waiting. Park until the poll interval elapses or a local
                     // submission unparks us.
-                    LockSupport.parkNanos(this, config.pollInterval().toNanos());
+                    LockSupport.parkNanos(this, pollNanos);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
-            } catch (RuntimeException e) {
-                // Storage is unhappy. Never spin on it: back off a poll interval and retry.
+            } catch (Throwable t) {
+                // Storage is unhappy. Never spin on it: back off a poll interval and retry. An
+                // Error (a driver's stack overflow, a class that fails to load) is treated like
+                // any other failure of one cycle: if it ended this thread, the pool would go on
+                // reporting itself running while nothing was ever claimed again.
                 log.error("Dispatcher {} hit an unexpected error; backing off",
-                        config.workerId(), e);
-                LockSupport.parkNanos(this, config.pollInterval().toNanos());
+                        config.workerId(), t);
+                LockSupport.parkNanos(this, pollNanos);
             }
         }
         log.debug("Dispatcher {} stopped", Thread.currentThread().getName());
+    }
+
+    /** {@code duration} in nanoseconds, or as many as a {@code long} holds if it is longer. */
+    private static long nanosSaturating(Duration duration) {
+        try {
+            return duration.toNanos();
+        } catch (ArithmeticException tooLong) {
+            return Long.MAX_VALUE;
+        }
     }
 
     /**
@@ -209,48 +225,52 @@ public final class WorkerPool implements AutoCloseable {
     private DispatchResult dispatchCycle() throws InterruptedException {
         // Block until there is room for at least one job; this is the backpressure valve.
         int budget = capacity.reserve(config.claimBatchSize());
-        if (!accepting) {
-            capacity.release(budget);
-            return DispatchResult.nothing(budget);
-        }
-
-        List<Job> claimed;
+        // The permits this cycle holds that no running job owns yet. Whatever is still owed when
+        // the cycle ends, however it ends, goes back in the finally block; a job that has been
+        // handed to the executor owns its permit from then on and returns it itself.
+        int owed = budget;
         try {
-            claimed = store.claim(
-                    config.workerId(), budget, config.visibilityTimeout(), clock.instant());
-        } catch (RuntimeException e) {
-            capacity.release(budget);
-            throw e;
-        }
-
-        // Hand back the permits the claim did not use.
-        capacity.release(budget - claimed.size());
-        if (claimed.isEmpty()) {
-            return DispatchResult.nothing(budget);
-        }
-        metrics.jobsClaimed(claimed.size());
-
-        CountDownLatch finished = new CountDownLatch(claimed.size());
-        for (Job job : claimed) {
-            try {
-                executor.execute(() -> {
-                    try {
-                        runJob(job);
-                    } finally {
-                        capacity.release(1);
-                        finished.countDown();
-                    }
-                });
-            } catch (RejectedExecutionException e) {
-                // Shutdown raced with this claim. Leave the job RUNNING and let its visibility
-                // lease expire. The sweeper on this or another instance will pick it back up.
-                capacity.release(1);
-                finished.countDown();
-                log.warn("Job {} claimed but not dispatched (pool shutting down); "
-                        + "it will be reclaimed after the visibility timeout", job.id());
+            if (!accepting) {
+                return DispatchResult.nothing(budget);
             }
+
+            List<Job> claimed = store.claim(
+                    config.workerId(), budget, config.visibilityTimeout(), clock.instant());
+
+            // Hand back the permits the claim did not use.
+            capacity.release(budget - claimed.size());
+            owed = claimed.size();
+            if (claimed.isEmpty()) {
+                return DispatchResult.nothing(budget);
+            }
+            metrics.jobsClaimed(claimed.size());
+
+            CountDownLatch finished = new CountDownLatch(claimed.size());
+            for (Job job : claimed) {
+                try {
+                    executor.execute(() -> {
+                        try {
+                            runJob(job);
+                        } finally {
+                            capacity.release(1);
+                            finished.countDown();
+                        }
+                    });
+                    owed--;
+                } catch (RejectedExecutionException e) {
+                    // Shutdown raced with this claim. Leave the job RUNNING and let its visibility
+                    // lease expire. The sweeper on this or another instance will pick it back up.
+                    capacity.release(1);
+                    owed--;
+                    finished.countDown();
+                    log.warn("Job {} claimed but not dispatched (pool shutting down); "
+                            + "it will be reclaimed after the visibility timeout", job.id());
+                }
+            }
+            return new DispatchResult(claimed, budget, finished);
+        } finally {
+            capacity.release(owed);
         }
-        return new DispatchResult(claimed, budget, finished);
     }
 
     /**
@@ -306,39 +326,51 @@ public final class WorkerPool implements AutoCloseable {
     private void runJob(Job job) {
         long startNanos = System.nanoTime();
         metrics.jobStarted();
+        // Whether the handler left this thread interrupted, or was interrupted out of its work. The
+        // flag is cleared while the outcome is recorded and restored afterwards: JDBC calls made on
+        // an interrupted thread fail (a pool's wait for a connection throws, a socket read is
+        // closed), so recording with the flag set would lose the outcome and leave the job RUNNING
+        // until its lease expires. Handlers that restore the flag before throwing, or swallow it and
+        // return, are common enough that the engine cannot assume otherwise.
+        boolean interrupted = false;
         try {
             JobHandler handler = registry.require(job.type());
             handler.handle(new JobContext(job, config.workerId()));
+            interrupted = Thread.interrupted();
             recordSuccess(job);
         } catch (PermanentJobFailureException e) {
+            interrupted |= Thread.interrupted();
+            // The capped description, as stored: a handler's message can be arbitrarily long.
+            String error = describe(e);
             log.warn("Job {} ({}) failed permanently on attempt {}: {}",
-                    job.id(), job.type(), job.attempt(), e.toString());
+                    job.id(), job.type(), job.attempt(), error);
             metrics.attemptFailed();
-            recordDeadLetter(job, describe(e));
+            recordDeadLetter(job, error);
         } catch (Throwable t) {
+            interrupted |= Thread.interrupted() || t instanceof InterruptedException;
             metrics.attemptFailed();
             recordFailure(job, t);
-            if (t instanceof InterruptedException) {
-                // Shutdown passed its drain deadline and interrupted us. Restore the flag only
-                // now that the failure is recorded. Setting it earlier can abort the very
-                // storage call that puts the job back on the queue.
+        } finally {
+            if (interrupted) {
+                // Shutdown passed its drain deadline and interrupted us, or the handler did. The
+                // interrupt stays a fact about this thread, so put it back, but only now that the
+                // outcome is recorded: with it set earlier the recording is what fails.
                 Thread.currentThread().interrupt();
             }
-        } finally {
-            metrics.jobFinished(Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            metrics.jobFinished(Duration.ofNanos(System.nanoTime() - startNanos));
         }
     }
 
     private void recordSuccess(Job job) {
         try {
-            if (store.complete(job.id(), config.workerId(), clock.instant()).isPresent()) {
+            if (store.complete(job.id(), config.workerId(), job.attempt(), clock.instant()).isPresent()) {
                 metrics.jobSucceeded();
                 log.debug("Job {} ({}) completed on attempt {}", job.id(), job.type(), job.attempt());
             } else {
                 metrics.leaseLost();
-                log.warn("Job {} finished but its lease was already gone. It ran longer than the "
-                        + "visibility timeout ({}) and another worker may have re-run it",
-                        job.id(), config.visibilityTimeout());
+                log.warn("Job {} finished attempt {} but its lease was already gone. It ran longer "
+                        + "than the visibility timeout ({}) and another attempt may have re-run it",
+                        job.id(), job.attempt(), config.visibilityTimeout());
             }
         } catch (RuntimeException e) {
             // The work happened; we just could not say so. The lease expires and the job is
@@ -368,13 +400,13 @@ public final class WorkerPool implements AutoCloseable {
             Instant now = clock.instant();
             Duration backoff = retryPolicy.backoffAfter(job.attempt());
             Instant retryAt = now.plus(backoff);
-            if (store.fail(job.id(), config.workerId(), error, retryAt, now).isPresent()) {
+            if (store.fail(job.id(), config.workerId(), job.attempt(), error, retryAt, now).isPresent()) {
                 metrics.retryScheduled();
                 log.debug("Job {} retry {} scheduled in {}", job.id(), job.attempt() + 1, backoff);
             } else {
                 metrics.leaseLost();
-                log.warn("Job {} failed but its lease was already gone; another worker owns it",
-                        job.id());
+                log.warn("Job {} failed on attempt {} but its lease was already gone; a later "
+                        + "attempt owns it", job.id(), job.attempt());
             }
         } catch (RuntimeException e) {
             log.error("Job {} failed and the failure could not be recorded", job.id(), e);
@@ -383,7 +415,7 @@ public final class WorkerPool implements AutoCloseable {
 
     private void recordDeadLetter(Job job, String error) {
         try {
-            if (store.deadLetter(job.id(), config.workerId(), error, clock.instant()).isPresent()) {
+            if (store.deadLetter(job.id(), config.workerId(), job.attempt(), error, clock.instant()).isPresent()) {
                 metrics.jobDeadLettered();
                 log.error("Job {} ({}) dead-lettered after {} attempt(s): {}",
                         job.id(), job.type(), job.attempt(), error);

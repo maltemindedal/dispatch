@@ -18,7 +18,8 @@ synonym.
   permits, one per job in flight, reserved before each claim and conserved across every dispatch
   path. Invariant: `available + in-flight == concurrency`.
 - **Lease.** The exclusivity window on a claimed job (`lockedUntil`/`lockedBy`). A worker may
-  only record an outcome while it still holds the lease; a lost lease is counted, not fought.
+  only record an outcome while it still holds the lease *as the attempt it claimed*, so a late result
+  from an earlier attempt, even the same worker's, is rejected; a lost lease is counted, not fought.
 - **Sweep.** The maintenance pass that promotes due SCHEDULED/FAILED jobs to PENDING and
   reclaims jobs whose lease expired.
 - **Dispatch cycle.** One claim round trip. Reserve claim budget, claim that many jobs, and hand each

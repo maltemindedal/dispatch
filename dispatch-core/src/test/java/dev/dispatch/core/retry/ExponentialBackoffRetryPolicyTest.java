@@ -125,6 +125,29 @@ class ExponentialBackoffRetryPolicyTest {
     }
 
     @Test
+    @DisplayName("NaN slips past every ordinary comparison, so it is rejected explicitly")
+    void notANumberIsRejected() {
+        // With a NaN multiplier the backoff collapses to zero from the second attempt; with a NaN
+        // jitter factor it is zero always. Either turns retries into a hot loop against whatever is
+        // already failing. Every `<` and `>` against NaN is false, so the range checks let it through.
+        assertThatThrownBy(() -> new ExponentialBackoffRetryPolicy(
+                Duration.ofSeconds(1), Double.NaN, Duration.ofMinutes(1), 0.5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("multiplier must be >= 1.0: NaN");
+        assertThatThrownBy(() -> new ExponentialBackoffRetryPolicy(
+                Duration.ofSeconds(1), 2.0, Duration.ofMinutes(1), Double.NaN))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("jitterFactor must be within [0, 1]: NaN");
+        assertThatThrownBy(() -> new ExponentialBackoffRetryPolicy(
+                Duration.ofSeconds(1), 2.0, Duration.ofMinutes(1), Double.POSITIVE_INFINITY))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("jitterFactor");
+        assertThatThrownBy(() -> ExponentialBackoffRetryPolicy.of(null, Double.NaN, null, null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("multiplier");
+    }
+
+    @Test
     @DisplayName("nonsense configuration is rejected up front")
     void validatesConfiguration() {
         assertThatThrownBy(() -> new ExponentialBackoffRetryPolicy(

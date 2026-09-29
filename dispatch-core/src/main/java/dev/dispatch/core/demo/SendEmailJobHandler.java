@@ -46,8 +46,10 @@ public final class SendEmailJobHandler implements JobHandler {
         attempted.increment();
         String payload = context.payload();
         if (payload == null || !payload.contains("\"to\"")) {
+            // Not the payload itself: the message is stored as lastError, logged, and returned by
+            // the API, and a payload is whatever the caller sent.
             throw new PermanentJobFailureException(
-                    "Payload has no \"to\" field; retrying will not conjure one up: " + payload);
+                    "Payload has no \"to\" field; retrying will not conjure one up");
         }
 
         // Blocking sleep on a virtual thread: cheap, and it yields the carrier thread.

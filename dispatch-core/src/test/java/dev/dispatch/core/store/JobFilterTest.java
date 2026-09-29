@@ -34,6 +34,20 @@ class JobFilterTest {
     }
 
     @Test
+    @DisplayName("a type containing a NUL character is refused: no store can hold or match one")
+    void typeMustNotContainNul() {
+        assertThatThrownBy(() -> new JobFilter(null, "a\u0000b", 10, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("type must not contain NUL characters");
+        assertThatThrownBy(() -> JobFilter.byType("\u0000"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(new JobFilter(null, "send-email", 10, 0).type()).isEqualTo("send-email");
+        assertThat(new JobFilter(null, null, 10, 0).type()).isNull();
+        assertThat(new JobFilter(null, "", 10, 0).type()).isEmpty();
+    }
+
+    @Test
     @DisplayName("withLimit and withOffset keep the rest of the filter")
     void withersKeepTheRest() {
         JobFilter filter = JobFilter.byState(JobState.PENDING).withLimit(5).withOffset(10);

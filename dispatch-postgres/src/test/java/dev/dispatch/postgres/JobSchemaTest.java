@@ -24,9 +24,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Schema bootstrap, including the case that actually bites: several instances starting at once.
@@ -42,8 +42,8 @@ class JobSchemaTest {
 
     @Container
     @SuppressWarnings("resource")
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>(PostgresTestSupport.IMAGE)
+    static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer(PostgresTestSupport.IMAGE)
                     .withDatabaseName("dispatch")
                     .withUsername("dispatch")
                     .withPassword("dispatch");

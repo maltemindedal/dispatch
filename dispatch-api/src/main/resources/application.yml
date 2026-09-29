@@ -13,17 +13,16 @@ spring:
       enabled: true
 
   jackson:
-    serialization:
-      write-dates-as-timestamps: false
     default-property-inclusion: non_null
+    # Boot 4 moved to Jackson 3, whose own defaults differ from Jackson 2's. This is Boot's switch
+    # for configuring it the way Boot configured Jackson 2, so the request and response format
+    # stays what it was. RestContractTest holds the wire format to that.
+    use-jackson2-defaults: true
 
 server:
   # On SIGTERM, stop accepting requests and let in-flight ones finish before the context closes.
   # The queue's own draining then happens when the JobQueue bean is destroyed.
   shutdown: graceful
-
-  error:
-    include-message: always
 
 dispatch:
   # jdbc (shared and durable) or memory (process-local, lost on restart)
@@ -54,6 +53,11 @@ dispatch:
 
   # Register the bundled send-email and resize-image simulators. Turn off in a real deployment.
   demo-handlers: true
+
+  # The largest POST /jobs body the API parses, in bytes (1 MiB). Bigger bodies get a 413. Enforced
+  # by the JSON parser as it reads, in steps of its input buffer (about 8 KB), so a body can pass by
+  # up to that much before it is refused.
+  max-payload-bytes: 1048576
 
 logging:
   level:
