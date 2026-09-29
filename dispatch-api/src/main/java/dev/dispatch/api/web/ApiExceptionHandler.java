@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -80,6 +81,19 @@ public class ApiExceptionHandler {
                 "The request body failed validation");
         problem.setProperty("errors", fieldErrors);
         return problem;
+    }
+
+    /**
+     * A body that is missing, is not JSON, or is JSON of the wrong shape (a string where a number
+     * belongs, an instant that does not parse). The framework's own message here is Jackson's: it
+     * quotes the offending text and names Java classes and fields, so the response carries a
+     * fixed description and the specifics stay in the debug log.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleUnreadableBody(HttpMessageNotReadableException e) {
+        log.debug("Unreadable request body", e);
+        return problem(HttpStatus.BAD_REQUEST, "Invalid request",
+                "The request body is missing or is not valid JSON of the expected shape");
     }
 
     /** Covers bad query parameters too. An unrecognised {@code ?status=} lands here. */

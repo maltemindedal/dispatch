@@ -19,11 +19,6 @@ spring:
     # stays what it was. RestContractTest holds the wire format to that.
     use-jackson2-defaults: true
 
-  web:
-    error:
-      # Boot 4 moved this property from server.error.include-message.
-      include-message: always
-
 server:
   # On SIGTERM, stop accepting requests and let in-flight ones finish before the context closes.
   # The queue's own draining then happens when the JobQueue bean is destroyed.

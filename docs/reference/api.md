@@ -43,7 +43,11 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
 **Responses**
 
 - `201 Created`: the [job](#the-job-resource), with a `Location: /jobs/{id}` header.
-- `400 Bad Request`: validation failure. The problem document carries a per-field `errors` map.
+- `400 Bad Request`: validation failure (the problem document carries a per-field `errors` map),
+  or a body that is missing, is not JSON, or is JSON of the wrong shape (a string where a number
+  belongs, an instant that does not parse). The latter has a fixed detail and does not quote the
+  body.
+- `415 Unsupported Media Type`: the `Content-Type` is not `application/json`.
 - `422 Unprocessable Entity`: no handler is registered for `type`. The message lists the types
   that exist.
 
@@ -175,7 +179,14 @@ Problem documents per RFC 9457, `Content-Type: application/problem+json`:
 }
 ```
 
-Validation failures (`400`) also carry an `errors` object mapping field names to
-messages. When the job store itself fails (a lost database connection, an exhausted pool) the
-answer is `500` with the title `Job store unavailable` and a fixed detail; the cause is in the
-server log, not in the response.
+Validation failures (`400`) also carry an `errors` object mapping field names to messages. A
+request body the server cannot read at all is a `400` with the title `Invalid request` and the fixed
+detail `The request body is missing or is not valid JSON of the expected shape`; what exactly was
+wrong is in the server's debug log. When the job store itself fails (a lost database connection, an
+exhausted pool) the answer is `500` with the title `Job store unavailable` and a fixed detail; the
+cause is in the server log, not in the response.
+
+Requests the framework rejects before they reach the API (an unknown path, an unsupported method or
+media type) are not problem documents. They get Spring Boot's default error object,
+`{"timestamp": ..., "status": 404, "error": "Not Found", "path": "/nope"}`, with
+`Content-Type: application/json` and no `message`.

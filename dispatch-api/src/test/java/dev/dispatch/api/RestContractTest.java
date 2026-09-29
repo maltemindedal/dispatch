@@ -32,9 +32,9 @@ import org.springframework.test.context.ActiveProfiles;
  * so it does not move with Spring's test-client APIs.
  *
  * <p>Ids and instants that the server generates are replaced by placeholders before comparing;
- * everything else is compared as written. For errors that the framework renders before any of our
- * handlers run, the {@code message} text is Jackson's and Spring's wording, so only its prefix is
- * pinned.
+ * everything else is compared as written. Errors the framework renders before any of our handlers
+ * run (unknown path, unsupported method or media type) are Boot's default error object, which
+ * carries no message.
  *
  * <p>The queue is inert here (an hour-long poll and sweep interval), so jobs stay in the state the
  * test puts them in. Jobs in states the API cannot create are placed by driving the store directly.
@@ -206,34 +206,32 @@ class RestContractTest {
     }
 
     @Test
-    @DisplayName("POST /jobs bodies the framework rejects come back as Boot's default error JSON")
-    void submitFrameworkRejections() {
-        Response malformed = send("POST", "/jobs", JSON, "{not json");
-        assertThat(malformed.status()).isEqualTo(400);
-        assertThat(malformed.contentType()).isEqualTo(JSON);
-        assertFrameworkError(malformed, 400, "Bad Request", "/jobs", "JSON parse error: ");
+    @DisplayName("POST /jobs with a body that is not readable JSON is a 400 problem with a fixed detail")
+    void submitUnreadableBodies() {
+        // Whatever is wrong with the body, the answer is the same and quotes none of it: Jackson's
+        // own message names Java classes and echoes the offending text.
+        String detail = "The request body is missing or is not valid JSON of the expected shape";
 
-        Response empty = send("POST", "/jobs", JSON, "");
-        assertThat(empty.status()).isEqualTo(400);
-        assertFrameworkError(empty, 400, "Bad Request", "/jobs", "Required request body is missing");
+        assertProblem(send("POST", "/jobs", JSON, "{not json"), 400, "Invalid request", detail,
+                "/jobs");
+        assertProblem(send("POST", "/jobs", JSON, ""), 400, "Invalid request", detail, "/jobs");
+        assertProblem(post("{\"type\":\"send-email\",\"scheduledAt\":\"tomorrow\"}"), 400,
+                "Invalid request", detail, "/jobs");
+        assertProblem(post("{\"type\":\"send-email\",\"maxRetries\":\"many\"}"), 400,
+                "Invalid request", detail, "/jobs");
+    }
 
-        Response badInstant = post("{\"type\":\"send-email\",\"scheduledAt\":\"tomorrow\"}");
-        assertThat(badInstant.status()).isEqualTo(400);
-        assertFrameworkError(badInstant, 400, "Bad Request", "/jobs", "JSON parse error: ");
-
-        Response wrongType = post("{\"type\":\"send-email\",\"maxRetries\":\"many\"}");
-        assertThat(wrongType.status()).isEqualTo(400);
-        assertFrameworkError(wrongType, 400, "Bad Request", "/jobs", "JSON parse error: ");
-
+    @Test
+    @DisplayName("POST /jobs with an unsupported media type is Boot's default 415 error JSON")
+    void submitUnsupportedMediaTypes() {
         Response plain = send("POST", "/jobs", "text/plain", "type=x");
         assertThat(plain.status()).isEqualTo(415);
-        assertFrameworkError(plain, 415, "Unsupported Media Type", "/jobs",
-                "Content-Type 'text/plain");
+        assertThat(plain.contentType()).isEqualTo(JSON);
+        assertFrameworkError(plain, 415, "Unsupported Media Type", "/jobs");
 
         Response none = send("POST", "/jobs", null, "{}");
         assertThat(none.status()).isEqualTo(415);
-        assertFrameworkError(none, 415, "Unsupported Media Type", "/jobs",
-                "Content-Type 'application/octet-stream' is not supported");
+        assertFrameworkError(none, 415, "Unsupported Media Type", "/jobs");
     }
 
     // ------------------------------------------------------------------ read
@@ -413,18 +411,17 @@ class RestContractTest {
         Response unknown = get("/nope");
         assertThat(unknown.status()).isEqualTo(404);
         assertThat(unknown.contentType()).isEqualTo(JSON);
-        assertFrameworkError(unknown, 404, "Not Found", "/nope", "No static resource nope");
+        assertFrameworkError(unknown, 404, "Not Found", "/nope");
 
         Response put = send("PUT", "/jobs", JSON, "{\"type\":\"x\"}");
         assertThat(put.status()).isEqualTo(405);
         // Which order the methods are listed in varies from run to run; the set is the contract.
         assertThat(put.header("allow")).contains("GET").contains("POST").doesNotContain("PUT");
-        assertFrameworkError(put, 405, "Method Not Allowed", "/jobs",
-                "Method 'PUT' is not supported");
+        assertFrameworkError(put, 405, "Method Not Allowed", "/jobs");
 
         Response slash = get("/jobs/");
         assertThat(slash.status()).isEqualTo(404);
-        assertFrameworkError(slash, 404, "Not Found", "/jobs/", "No static resource jobs");
+        assertFrameworkError(slash, 404, "Not Found", "/jobs/");
 
         assertThat(get("/actuator/health").status()).isEqualTo(404);
     }
@@ -465,14 +462,13 @@ class RestContractTest {
     }
 
     /**
-     * Boot's default error body: {@code timestamp, status, error, message, path}, in that order.
-     * The message is asserted by prefix because its wording belongs to Jackson and Spring.
+     * Boot's default error body for what the framework rejects before a controller runs:
+     * {@code timestamp, status, error, path}, in that order. There is deliberately no
+     * {@code message}: its wording is the framework's, and for some errors it names Java classes.
      */
-    private void assertFrameworkError(
-            Response r, int status, String error, String path, String messagePrefix) {
-        assertThat(r.normalized()).startsWith("{\"timestamp\":\"<ts>\",\"status\":" + status
-                + ",\"error\":\"" + error + "\",\"message\":\"" + messagePrefix);
-        assertThat(r.normalized()).endsWith("\",\"path\":\"" + path + "\"}");
+    private void assertFrameworkError(Response r, int status, String error, String path) {
+        assertThat(r.normalized()).isEqualTo("{\"timestamp\":\"<ts>\",\"status\":" + status
+                + ",\"error\":\"" + error + "\",\"path\":\"" + path + "\"}");
     }
 
     private Response post(String json) {
