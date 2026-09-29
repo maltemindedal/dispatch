@@ -340,10 +340,12 @@ public final class WorkerPool implements AutoCloseable {
             recordSuccess(job);
         } catch (PermanentJobFailureException e) {
             interrupted |= Thread.interrupted();
+            // The capped description, as stored: a handler's message can be arbitrarily long.
+            String error = describe(e);
             log.warn("Job {} ({}) failed permanently on attempt {}: {}",
-                    job.id(), job.type(), job.attempt(), e.toString());
+                    job.id(), job.type(), job.attempt(), error);
             metrics.attemptFailed();
-            recordDeadLetter(job, describe(e));
+            recordDeadLetter(job, error);
         } catch (Throwable t) {
             interrupted |= Thread.interrupted() || t instanceof InterruptedException;
             metrics.attemptFailed();
