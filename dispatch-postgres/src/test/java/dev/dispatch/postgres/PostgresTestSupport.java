@@ -2,7 +2,7 @@ package dev.dispatch.postgres;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /** Shared Testcontainers wiring, so every PostgreSQL test agrees on image and pool settings. */
@@ -13,7 +13,7 @@ final class PostgresTestSupport {
     private PostgresTestSupport() {
     }
 
-    static HikariConfig config(PostgreSQLContainer<?> container, int poolSize) {
+    static HikariConfig config(PostgreSQLContainer container, int poolSize) {
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(container.getJdbcUrl());
         config.setUsername(container.getUsername());
@@ -25,7 +25,7 @@ final class PostgresTestSupport {
         return config;
     }
 
-    static HikariDataSource pool(PostgreSQLContainer<?> container, int poolSize) {
+    static HikariDataSource pool(PostgreSQLContainer container, int poolSize) {
         return new HikariDataSource(config(container, poolSize));
     }
 }

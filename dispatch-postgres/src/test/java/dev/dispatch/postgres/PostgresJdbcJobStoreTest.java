@@ -7,9 +7,9 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * The shared store contract, run against real PostgreSQL in a container.
@@ -24,8 +24,8 @@ class PostgresJdbcJobStoreTest extends JobStoreContract {
 
     @Container
     @SuppressWarnings("resource")
-    static final PostgreSQLContainer<?> POSTGRES =
-            new PostgreSQLContainer<>(PostgresTestSupport.IMAGE)
+    static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer(PostgresTestSupport.IMAGE)
                     .withDatabaseName("dispatch")
                     .withUsername("dispatch")
                     .withPassword("dispatch");
