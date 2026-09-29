@@ -57,10 +57,12 @@ public final class ExponentialBackoffRetryPolicy implements RetryPolicy {
             throw new IllegalArgumentException(
                     "maxDelay (" + maxDelay + ") must be >= baseDelay (" + baseDelay + ")");
         }
-        if (multiplier < 1.0) {
+        // Written as "not in range" rather than "out of range": every comparison against NaN is
+        // false, so the plain form would let NaN through and turn every backoff into zero.
+        if (!(multiplier >= 1.0)) {
             throw new IllegalArgumentException("multiplier must be >= 1.0: " + multiplier);
         }
-        if (jitterFactor < 0.0 || jitterFactor > 1.0) {
+        if (!(jitterFactor >= 0.0 && jitterFactor <= 1.0)) {
             throw new IllegalArgumentException("jitterFactor must be within [0, 1]: " + jitterFactor);
         }
         this.multiplier = multiplier;

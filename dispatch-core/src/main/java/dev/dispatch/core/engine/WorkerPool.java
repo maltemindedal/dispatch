@@ -146,12 +146,16 @@ public final class WorkerPool implements AutoCloseable {
 
     private void dispatchLoop() {
         log.debug("Dispatcher {} running", Thread.currentThread().getName());
+        // Converted once, and outside the try: Duration.toNanos() throws for an interval beyond
+        // about 292 years, and it used to be called again inside the error handler below, where a
+        // throw ended the dispatcher thread for good.
+        long pollNanos = nanosSaturating(config.pollInterval());
         while (accepting) {
             try {
                 if (dispatchCycle().isEmpty()) {
                     // Nothing was waiting. Park until the poll interval elapses or a local
                     // submission unparks us.
-                    LockSupport.parkNanos(this, config.pollInterval().toNanos());
+                    LockSupport.parkNanos(this, pollNanos);
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -163,10 +167,19 @@ public final class WorkerPool implements AutoCloseable {
                 // reporting itself running while nothing was ever claimed again.
                 log.error("Dispatcher {} hit an unexpected error; backing off",
                         config.workerId(), t);
-                LockSupport.parkNanos(this, config.pollInterval().toNanos());
+                LockSupport.parkNanos(this, pollNanos);
             }
         }
         log.debug("Dispatcher {} stopped", Thread.currentThread().getName());
+    }
+
+    /** {@code duration} in nanoseconds, or as many as a {@code long} holds if it is longer. */
+    private static long nanosSaturating(Duration duration) {
+        try {
+            return duration.toNanos();
+        } catch (ArithmeticException tooLong) {
+            return Long.MAX_VALUE;
+        }
     }
 
     /**

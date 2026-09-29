@@ -60,7 +60,10 @@ public final class QueueMaintenance implements AutoCloseable {
             thread.setDaemon(true);
             return thread;
         });
-        long periodMillis = config.maintenanceInterval().toMillis();
+        // An interval under a millisecond truncates to zero, which the scheduler rejects. By then
+        // the worker pool has already started, so the failure would leave a half-started queue.
+        // Round up to the smallest period the scheduler takes instead.
+        long periodMillis = Math.max(1L, config.maintenanceInterval().toMillis());
         service.scheduleWithFixedDelay(
                 this::sweepQuietly, periodMillis, periodMillis, TimeUnit.MILLISECONDS);
         scheduler = service;
