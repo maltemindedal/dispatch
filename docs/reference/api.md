@@ -35,7 +35,7 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `type` | string, ≤ 255 chars | yes | Handler routing key. |
-| `payload` | any JSON | no | Stored verbatim and handed to the handler untouched. `null`/absent is stored as `{}`. |
+| `payload` | any JSON | no | Stored verbatim and handed to the handler untouched. `null`/absent is stored as `{}`. The whole request body is limited to 1 MiB by default (see the `413` response below). |
 | `priority` | integer | no | Higher runs first; omit for the normal band (`0`). |
 | `maxRetries` | integer ≥ 0 | no | Retries beyond the first attempt. Default `3`. |
 | `scheduledAt` | ISO-8601 instant | no | Run no earlier than this. Omit to run as soon as possible. A future instant submits the job as `SCHEDULED`. Must lie between `0001-01-01T00:00:00Z` and `9999-12-31T23:59:59.999999999Z`; anything outside is a `400`. |
@@ -47,6 +47,9 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
   or a body that is missing, is not JSON, or is JSON of the wrong shape (a string where a number
   belongs, an instant that does not parse). The latter has a fixed detail and does not quote the
   body.
+- `413 Content Too Large`: the body is larger than [`dispatch.max-payload-bytes`](configuration.md)
+  (1 MiB by default) or nests deeper than 64 levels. It is refused while it is being read, before it
+  is held in memory whole.
 - `415 Unsupported Media Type`: the `Content-Type` is not `application/json`.
 - `422 Unprocessable Entity`: no handler is registered for `type`. The message lists the types
   that exist.

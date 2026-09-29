@@ -54,6 +54,11 @@ dispatch:
   # Register the bundled send-email and resize-image simulators. Turn off in a real deployment.
   demo-handlers: true
 
+  # The largest POST /jobs body the API parses, in bytes (1 MiB). Bigger bodies get a 413. Enforced
+  # by the JSON parser as it reads, in steps of its input buffer (about 8 KB), so a body can pass by
+  # up to that much before it is refused.
+  max-payload-bytes: 1048576
+
 logging:
   level:
     dev.dispatch: INFO

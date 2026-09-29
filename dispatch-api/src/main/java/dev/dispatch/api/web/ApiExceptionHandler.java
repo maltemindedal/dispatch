@@ -1,5 +1,7 @@
 package dev.dispatch.api.web;
 
+import dev.dispatch.api.config.QueueProperties;
+import dev.dispatch.api.config.RequestLimits;
 import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.IllegalJobTransitionException;
 import dev.dispatch.core.store.JobStoreException;
@@ -14,6 +16,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import tools.jackson.core.exc.StreamConstraintsException;
 
 /**
  * Turns domain exceptions into RFC 9457 problem responses, so clients get a machine-readable body
@@ -30,6 +33,12 @@ public class ApiExceptionHandler {
      * from the JSON.
      */
     private static final URI ABOUT_BLANK = URI.create("about:blank");
+
+    private final long maxPayloadBytes;
+
+    ApiExceptionHandler(QueueProperties properties) {
+        this.maxPayloadBytes = properties.maxPayloadBytes();
+    }
 
     @ExceptionHandler(JobNotFoundException.class)
     ProblemDetail handleNotFound(JobNotFoundException e) {
@@ -92,8 +101,23 @@ public class ApiExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ProblemDetail handleUnreadableBody(HttpMessageNotReadableException e) {
         log.debug("Unreadable request body", e);
+        if (causedByLimit(e)) {
+            return problem(HttpStatus.CONTENT_TOO_LARGE, "Request body too large",
+                    "The request body is larger than the " + maxPayloadBytes + " bytes this server"
+                            + " accepts, or nests deeper than " + RequestLimits.MAX_NESTING_DEPTH
+                            + " levels");
+        }
         return problem(HttpStatus.BAD_REQUEST, "Invalid request",
                 "The request body is missing or is not valid JSON of the expected shape");
+    }
+
+    private static boolean causedByLimit(Throwable e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof StreamConstraintsException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Covers bad query parameters too. An unrecognised {@code ?status=} lands here. */

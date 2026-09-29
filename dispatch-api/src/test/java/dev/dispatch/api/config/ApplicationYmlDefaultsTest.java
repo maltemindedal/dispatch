@@ -52,6 +52,10 @@ class ApplicationYmlDefaultsTest {
                                 .isEqualTo(engine.ceilingFor(attempt));
                     }
                     assertThat(fromYml).hasToString(engine.toString());
+
+                    // Not an engine setting, so nothing to compare with: this pins the 1 MiB that
+                    // docs/reference/configuration.md promises.
+                    assertThat(properties.maxPayloadBytes()).isEqualTo(1024 * 1024);
                 });
     }
 }

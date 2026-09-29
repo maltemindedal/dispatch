@@ -5,6 +5,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.NullNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.StringNode;
 
 /**
@@ -19,6 +20,13 @@ import tools.jackson.databind.node.StringNode;
 public class PayloadCodec {
 
     private final ObjectMapper objectMapper;
+
+    /**
+     * Reads what is already stored. The application's mapper carries the request size limit, and a
+     * row written before that limit existed may exceed it; it must still come back as the JSON it
+     * is. Jackson's own defaults apply here, as they did before the limit.
+     */
+    private final ObjectMapper storedReader = JsonMapper.builderWithJackson2Defaults().build();
 
     public PayloadCodec(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -50,7 +58,7 @@ public class PayloadCodec {
             return NullNode.getInstance();
         }
         try {
-            return objectMapper.readTree(payload);
+            return storedReader.readTree(payload);
         } catch (JacksonException e) {
             return StringNode.valueOf(payload);
         }

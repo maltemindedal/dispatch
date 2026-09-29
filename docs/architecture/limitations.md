@@ -41,6 +41,9 @@ This is a list of what the system does not do, in roughly the order to fix it.
    listens on all interfaces. Run it on a trusted network or behind a reverse proxy that
    authenticates. The `dev` profile also serves the H2 web console at `/h2-console`, meant for
    local use only; use the `postgres` profile, or set `spring.h2.console.enabled=false`, for
-   anything that is not on your own machine.
+   anything that is not on your own machine. `POST /jobs` bodies are capped
+   (`dispatch.max-payload-bytes`, 1 MiB), but `GET /jobs` is not bounded by payload size: it returns
+   up to 1000 rows with their full payloads, so a deployment that stores large payloads should ask
+   for a small `limit`.
 8. **`GET /stats` counters are per-process** and reset on restart. Cluster-wide throughput
    numbers would need to come from the database or a metrics backend.

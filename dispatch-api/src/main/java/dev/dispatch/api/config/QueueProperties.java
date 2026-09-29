@@ -24,6 +24,9 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param shutdownDrainTimeout how long shutdown waits for in-flight jobs
  * @param retry              backoff settings
  * @param demoHandlers       register the bundled send-email and resize-image simulators
+ * @param maxPayloadBytes    the largest {@code POST /jobs} body the API will parse, in bytes;
+ *                           larger bodies are refused with 413. Not an engine setting: the engine
+ *                           treats a payload as an opaque string of any size
  */
 @ConfigurationProperties("dispatch")
 public record QueueProperties(
@@ -37,7 +40,8 @@ public record QueueProperties(
         Integer maintenanceBatchSize,
         Duration shutdownDrainTimeout,
         @DefaultValue Retry retry,
-        @DefaultValue("true") boolean demoHandlers) {
+        @DefaultValue("true") boolean demoHandlers,
+        @DefaultValue("1048576") long maxPayloadBytes) {
 
     /** Which {@code JobStore} implementation to use. */
     public enum StoreType {
