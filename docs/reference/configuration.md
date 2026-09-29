@@ -19,7 +19,7 @@ exactly one place, and `application.yml` restates them.
 | `poll-interval` | duration | `250ms` | How long an idle dispatcher parks before polling again. Submissions on this instance wake it early, so this only bounds the pickup latency of work created elsewhere. |
 | `visibility-timeout` | duration | `5m` | How long a claim stays exclusive before the job is deemed abandoned. Must comfortably exceed your slowest handler, or healthy jobs get run twice. Instances judge leases with their own clocks, so keep them [synchronised](../guides/running-multiple-instances.md#keep-the-clocks-in-sync). |
 | `maintenance-interval` | duration | `1s` | How often the sweeper promotes due jobs and reclaims expired leases. |
-| `maintenance-batch-size` | int ≥ 1 | `500` | Row cap per maintenance pass, keeping those statements short. |
+| `maintenance-batch-size` | int ≥ 1 | `500` | Row cap per maintenance pass, keeping those statements short. Together with the interval this caps how fast delayed and backing-off jobs become claimable: at most this many per pass, so 500 per second at the defaults. If you expect bursts of due jobs (a big retry storm, many jobs scheduled for the same minute), shorten `maintenance-interval` to `100ms`–`200ms` rather than raising the batch size; an idle sweep costs a fraction of a millisecond. |
 | `shutdown-drain-timeout` | duration | `30s` | How long shutdown waits for in-flight jobs before interrupting them. |
 | `demo-handlers` | boolean | `true` | Register the bundled `send-email` and `resize-image` simulators. Turn off in a real deployment. |
 
@@ -52,6 +52,10 @@ The same `JdbcJobRows` adapter runs here as against PostgreSQL, with the same SQ
 does not reproduce is contention behaviour: its locking is coarser, so a second instance pointed
 at the same H2 database gets empty claims rather than the next unlocked rows. Single instance is
 fine; for anything multi-instance, use the `postgres` profile.
+
+H2 also cannot use an index to order a `FOR UPDATE` query, so a claim scans every `PENDING` row:
+about 1 ms with a thousand pending jobs, 8 ms at ten thousand, 50 ms at fifty thousand. That is
+plenty for development; use the `postgres` profile for large backlogs.
 
 ### The postgres profile
 

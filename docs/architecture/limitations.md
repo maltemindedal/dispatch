@@ -14,7 +14,8 @@ This is a list of what the system does not do, in roughly the order to fix it.
    ever used for more than tests and demos.
 3. **Completed jobs are kept forever.** There's no reaper. A real deployment wants
    `DELETE FROM jobs WHERE state = 'COMPLETED' AND updated_at < now() - interval '7 days'` on a
-   schedule, or partitioning by month.
+   schedule, or partitioning by month. It also bounds the cost of `GET /stats`, which counts every
+   retained row (tens of milliseconds at a million rows) on every call.
 4. **Schema is applied by an idempotent DDL script**, not a migration tool. Fine for one schema
    version; swap in Flyway the moment there's a second.
 5. **`payload` is `TEXT`, not `jsonb`.** Portable to H2, but it gives up indexing and querying
@@ -22,6 +23,18 @@ This is a list of what the system does not do, in roughly the order to fix it.
 6. **The claim index is a portable composite** `(state, priority DESC, scheduled_at, created_at)`.
    On PostgreSQL alone, a partial index `WHERE state = 'PENDING'` would be strictly better. It
    keeps every completed job out of the index entirely. H2 has no partial indexes.
+
+   One consequence to know about: PostgreSQL chooses the claim plan from table statistics, and
+   right after a large batch of jobs becomes `PENDING` at once (a mass retry, a burst of scheduled
+   jobs coming due) its estimate can say "no pending rows", so it sorts the whole backlog for each
+   claim (tens of milliseconds instead of a fraction of one) until autovacuum next analyzes the
+   table. A deployment that sees such bursts should make that happen sooner:
+
+   ```sql
+   ALTER TABLE jobs SET (autovacuum_analyze_scale_factor = 0.01, autovacuum_analyze_threshold = 500);
+   ```
+
+   and keep `dispatch.maintenance-batch-size` modest so a promotion is not one huge step.
 7. **No authentication on the API**, and `GET /jobs` has no cursor pagination, so deep `offset`
    paging degrades. Every endpoint, including cancel and retry, is open to anyone who can reach the
    port; payloads and `lastError` are readable and can carry personal data; and the server
