@@ -27,6 +27,10 @@ Registered job handlers: [resize-image, send-email]
 Job queue worker-3f2a91bc started with handlers for [resize-image, send-email]
 ```
 
+The last line comes after the web server is listening: the queue starts claiming work only once
+the whole application is up, so an instance that fails to start (the port is taken, say) has not
+run anything.
+
 Those handlers are bundled simulators so the queue has work to process.
 
 ## 2. Submit a job

@@ -22,7 +22,9 @@ PostgreSQL profile and integration tests also need Docker.
 ```
 
 The app is ready when it logs
-`Job queue worker-... started with handlers for [resize-image, send-email]`. Submit a job and
+`Job queue worker-... started with handlers for [resize-image, send-email]`, which comes after the
+web server is listening: the queue does not claim work until the whole application is up. Submit a
+job and
 watch it run:
 
 ```bash
