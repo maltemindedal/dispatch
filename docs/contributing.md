@@ -16,7 +16,7 @@
 ./gradlew :dispatch-api:bootRun   # run the app locally (H2, port 8080)
 ```
 
-The suite has around 180 tests (as of 2026-08; run `./gradlew test` for the current count). The
+The suite has a few hundred tests (run `./gradlew test` for the current count). The
 timing-heavy tests use a controllable clock instead of sleeps, which keeps the suite fast and
 avoids flaky timing.
 
@@ -66,6 +66,12 @@ These tests cover the main contracts and execution paths:
   [concurrent-bootstrap race](architecture/reliability.md#schema-creation-is-a-race).
 - **`JobApiTest`** / **`PostgresEndToEndTest`** (`dispatch-api`): test the HTTP endpoints against the
   in-memory store, and the full stack against containerised PostgreSQL.
+- **`RestContractTest`** / **`StatsContractTest`** (`dispatch-api`): pin the wire contract byte for
+  byte over real HTTP: exact JSON, status and content type of every success and error body. Where
+  `JobApiTest` checks fields, these catch what an upgrade of Jackson, Spring or Tomcat can change
+  without touching a field: key order, number formatting, escaping, omitted nulls. If you change a
+  response on purpose, update the expected text here in the same commit; the placeholders (`<id>`,
+  `<ts>`) stand for values the server generates.
 
 ## CI
 
