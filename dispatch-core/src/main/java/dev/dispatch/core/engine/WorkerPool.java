@@ -313,25 +313,35 @@ public final class WorkerPool implements AutoCloseable {
     private void runJob(Job job) {
         long startNanos = System.nanoTime();
         metrics.jobStarted();
+        // Whether the handler left this thread interrupted, or was interrupted out of its work. The
+        // flag is cleared while the outcome is recorded and restored afterwards: JDBC calls made on
+        // an interrupted thread fail (a pool's wait for a connection throws, a socket read is
+        // closed), so recording with the flag set would lose the outcome and leave the job RUNNING
+        // until its lease expires. Handlers that restore the flag before throwing, or swallow it and
+        // return, are common enough that the engine cannot assume otherwise.
+        boolean interrupted = false;
         try {
             JobHandler handler = registry.require(job.type());
             handler.handle(new JobContext(job, config.workerId()));
+            interrupted = Thread.interrupted();
             recordSuccess(job);
         } catch (PermanentJobFailureException e) {
+            interrupted |= Thread.interrupted();
             log.warn("Job {} ({}) failed permanently on attempt {}: {}",
                     job.id(), job.type(), job.attempt(), e.toString());
             metrics.attemptFailed();
             recordDeadLetter(job, describe(e));
         } catch (Throwable t) {
+            interrupted |= Thread.interrupted() || t instanceof InterruptedException;
             metrics.attemptFailed();
             recordFailure(job, t);
-            if (t instanceof InterruptedException) {
-                // Shutdown passed its drain deadline and interrupted us. Restore the flag only
-                // now that the failure is recorded. Setting it earlier can abort the very
-                // storage call that puts the job back on the queue.
+        } finally {
+            if (interrupted) {
+                // Shutdown passed its drain deadline and interrupted us, or the handler did. The
+                // interrupt stays a fact about this thread, so put it back, but only now that the
+                // outcome is recorded: with it set earlier the recording is what fails.
                 Thread.currentThread().interrupt();
             }
-        } finally {
             metrics.jobFinished(Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
         }
     }
