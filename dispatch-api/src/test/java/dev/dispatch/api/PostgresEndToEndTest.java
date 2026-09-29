@@ -149,6 +149,34 @@ class PostgresEndToEndTest {
     }
 
     @Test
+    @DisplayName("a scheduledAt PostgreSQL cannot store is refused, and the queue keeps working")
+    void unstorableScheduleIsRefusedAndDoesNotJamTheQueue() {
+        // Before the range check this row was stored as '-infinity', sorted first in every claim,
+        // and made every later claim throw, so nothing else ever ran. Highest priority makes it
+        // the first row the claim would reach.
+        Map<String, Object> poison = Map.of(
+                "type", TestHandlers.OK,
+                "payload", Map.of(),
+                "priority", Integer.MAX_VALUE,
+                "scheduledAt", "-100000-01-01T00:00:00Z");
+        ResponseEntity<String> refused = rest.postForEntity("/jobs", poison, String.class);
+        assertThat(refused.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        Map<String, Object> tooLate = Map.of(
+                "type", TestHandlers.OK,
+                "payload", Map.of(),
+                "scheduledAt", "+300000-01-01T00:00:00Z");
+        assertThat(rest.postForEntity("/jobs", tooLate, String.class).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+
+        JobResponse healthy = rest.postForObject("/jobs", Map.of(
+                "type", TestHandlers.OK, "payload", Map.of()), JobResponse.class);
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                assertThat(rest.getForObject("/jobs/" + healthy.id(), JobResponse.class).state())
+                        .isEqualTo(JobState.COMPLETED));
+    }
+
+    @Test
     @DisplayName("GET /stats reads queue depth from the database")
     void statsReflectTheDatabase() {
         rest.postForObject("/jobs", Map.of(

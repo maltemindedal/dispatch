@@ -38,7 +38,7 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
 | `payload` | any JSON | no | Stored verbatim and handed to the handler untouched. `null`/absent is stored as `{}`. |
 | `priority` | integer | no | Higher runs first; omit for the normal band (`0`). |
 | `maxRetries` | integer ≥ 0 | no | Retries beyond the first attempt. Default `3`. |
-| `scheduledAt` | ISO-8601 instant | no | Run no earlier than this. Omit to run as soon as possible. A future instant submits the job as `SCHEDULED`. |
+| `scheduledAt` | ISO-8601 instant | no | Run no earlier than this. Omit to run as soon as possible. A future instant submits the job as `SCHEDULED`. Must lie between `0001-01-01T00:00:00Z` and `9999-12-31T23:59:59.999999999Z`; anything outside is a `400`. |
 
 **Responses**
 

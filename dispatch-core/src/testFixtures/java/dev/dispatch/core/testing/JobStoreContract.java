@@ -114,6 +114,25 @@ public abstract class JobStoreContract {
         }
 
         @Test
+        @DisplayName("scheduledAt at both ends of the four-digit-year range round-trips exactly")
+        void scheduledAtRangeEdgesRoundTrip() {
+            Instant earliest = Instant.parse("0001-01-01T00:00:00Z");
+            Instant latest = Instant.parse("9999-12-31T23:59:59Z");
+
+            Job early = store.insert(new JobSubmission("send-email", "{}", 0, 3, earliest), now());
+            Job late = store.insert(new JobSubmission("send-email", "{}", 0, 3, latest), now());
+
+            assertThat(reload(early).scheduledAt()).isEqualTo(earliest);
+            assertThat(reload(late).scheduledAt()).isEqualTo(latest);
+            assertThat(reload(early).state()).isEqualTo(JobState.PENDING);
+            assertThat(reload(late).state()).isEqualTo(JobState.SCHEDULED);
+            // The early one is due, so it is claimable and the claim can write it back.
+            List<Job> claimed = store.claim(WORKER, 8, LEASE, now());
+            assertThat(claimed).extracting(Job::id).containsExactly(early.id());
+            assertThat(reload(early).scheduledAt()).isEqualTo(earliest);
+        }
+
+        @Test
         @DisplayName("payload, priority and retry budget round-trip unchanged")
         void fieldsRoundTrip() {
             String payload = "{\"to\":\"someone@example.com\",\"subject\":\"héllo → ✉\"}";

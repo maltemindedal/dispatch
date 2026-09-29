@@ -155,6 +155,38 @@ class JobApiTest {
     }
 
     @Test
+    @DisplayName("POST /jobs refuses a scheduledAt outside years 0001-9999 with a 400 problem")
+    void submitOutOfRangeScheduledAt() throws Exception {
+        for (String instant : new String[] {
+                "-100000-01-01T00:00:00Z", "0000-12-31T23:59:59Z",
+                "+10000-01-01T00:00:00Z", "+300000-01-01T00:00:00Z"}) {
+            mockMvc.perform(post("/jobs").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"type\": \"test-ok\", \"scheduledAt\": \"" + instant + "\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(header().string("Content-Type", "application/problem+json"))
+                    .andExpect(jsonPath("$.title").value("Invalid request"))
+                    .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith(
+                            "scheduledAt must be between 0001-01-01T00:00:00Z and "
+                                    + "9999-12-31T23:59:59.999999999Z: ")));
+        }
+        assertThat(store.countsByState().values()).containsOnly(0L);
+    }
+
+    @Test
+    @DisplayName("POST /jobs accepts a scheduledAt at the edges of years 0001-9999")
+    void submitScheduledAtAtTheEdges() throws Exception {
+        mockMvc.perform(post("/jobs").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\": \"test-ok\", \"scheduledAt\": \"0001-01-01T00:00:00Z\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.scheduledAt").value("0001-01-01T00:00:00Z"));
+        mockMvc.perform(post("/jobs").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"type\": \"test-ok\", \"scheduledAt\": \"9999-12-31T23:59:59Z\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.state").value("SCHEDULED"))
+                .andExpect(jsonPath("$.scheduledAt").value("9999-12-31T23:59:59Z"));
+    }
+
+    @Test
     @DisplayName("POST /jobs defaults priority, retries and schedule when they are omitted")
     void submitWithDefaults() throws Exception {
         mockMvc.perform(post("/jobs").contentType(MediaType.APPLICATION_JSON)
