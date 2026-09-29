@@ -21,6 +21,11 @@ This is a list of what the system does not do, in roughly the order to fix it.
    On PostgreSQL alone, a partial index `WHERE state = 'PENDING'` would be strictly better. It
    keeps every completed job out of the index entirely. H2 has no partial indexes.
 7. **No authentication on the API**, and `GET /jobs` has no cursor pagination, so deep `offset`
-   paging degrades.
+   paging degrades. Every endpoint, including cancel and retry, is open to anyone who can reach the
+   port; payloads and `lastError` are readable and can carry personal data; and the server
+   listens on all interfaces. Run it on a trusted network or behind a reverse proxy that
+   authenticates. The `dev` profile also serves the H2 web console at `/h2-console`, meant for
+   local use only; use the `postgres` profile, or set `spring.h2.console.enabled=false`, for
+   anything that is not on your own machine.
 8. **`GET /stats` counters are per-process** and reset on restart. Cluster-wide throughput
    numbers would need to come from the database or a metrics backend.

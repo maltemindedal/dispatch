@@ -39,6 +39,9 @@ curl -s localhost:8080/stats | jq
 Seeing `FAILED` on a fresh job is expected. The job is waiting out a retry backoff. Set
 `dispatch.demo-handlers: false` to drop the simulators in a real deployment.
 
+The API has no authentication and listens on all interfaces. Keep it on a trusted network or behind
+a reverse proxy that authenticates (see [known limitations](docs/architecture/limitations.md)).
+
 With PostgreSQL:
 
 ```bash

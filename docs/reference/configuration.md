@@ -17,7 +17,7 @@ exactly one place, and `application.yml` restates them.
 | `concurrency` | int ≥ 1 | `16` | Maximum jobs in flight on this instance. Also sizes the claim-capacity gate, so the engine never claims work it has no room to run. |
 | `claim-batch-size` | int ≥ 1 | `8` | Jobs claimed per database round trip. |
 | `poll-interval` | duration | `250ms` | How long an idle dispatcher parks before polling again. Submissions on this instance wake it early, so this only bounds the pickup latency of work created elsewhere. |
-| `visibility-timeout` | duration | `5m` | How long a claim stays exclusive before the job is deemed abandoned. Must comfortably exceed your slowest handler, or healthy jobs get run twice. |
+| `visibility-timeout` | duration | `5m` | How long a claim stays exclusive before the job is deemed abandoned. Must comfortably exceed your slowest handler, or healthy jobs get run twice. Instances judge leases with their own clocks, so keep them [synchronised](../guides/running-multiple-instances.md#keep-the-clocks-in-sync). |
 | `maintenance-interval` | duration | `1s` | How often the sweeper promotes due jobs and reclaims expired leases. |
 | `maintenance-batch-size` | int ≥ 1 | `500` | Row cap per maintenance pass, keeping those statements short. |
 | `shutdown-drain-timeout` | duration | `30s` | How long shutdown waits for in-flight jobs before interrupting them. |
