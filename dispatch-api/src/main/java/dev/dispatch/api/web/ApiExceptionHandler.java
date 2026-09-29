@@ -2,6 +2,7 @@ package dev.dispatch.api.web;
 
 import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.IllegalJobTransitionException;
+import dev.dispatch.core.store.JobStoreException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -48,6 +49,18 @@ public class ApiExceptionHandler {
     ProblemDetail handleIllegalTransition(IllegalJobTransitionException e) {
         log.warn("Illegal job transition surfaced through the API", e);
         return problem(HttpStatus.CONFLICT, "Illegal job transition", e.getMessage());
+    }
+
+    /**
+     * The store failed: a lost connection, an exhausted pool, a rejected statement. Its message
+     * names drivers, pools and SQL, which is for the log and not for the caller, so the response
+     * carries a fixed description and the detail stays server-side.
+     */
+    @ExceptionHandler(JobStoreException.class)
+    ProblemDetail handleStoreFailure(JobStoreException e) {
+        log.error("Job store failure", e);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Job store unavailable",
+                "The job store could not complete the request");
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

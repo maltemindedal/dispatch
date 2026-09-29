@@ -292,6 +292,10 @@ class RestContractTest {
                 "For input string: \\\"abc\\\"", "/jobs");
         assertProblem(get("/jobs?offset=-1"), 400, "Invalid request",
                 "offset must not be negative: -1", "/jobs");
+        assertProblem(get("/jobs?type=%00"), 400, "Invalid request",
+                "type must not contain NUL characters", "/jobs");
+        assertProblem(get("/jobs?type=abc%00def"), 400, "Invalid request",
+                "type must not contain NUL characters", "/jobs");
     }
 
     @Test

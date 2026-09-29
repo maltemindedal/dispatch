@@ -6,7 +6,7 @@ import dev.dispatch.core.job.JobState;
  * Query for {@link JobStore#list}. Null state or type means "any".
  *
  * @param state  restrict to one lifecycle state, or null
- * @param type   restrict to one job type, or null
+ * @param type   restrict to one job type, or null; must not contain a NUL character
  * @param limit  maximum rows to return
  * @param offset rows to skip, for paging
  */
@@ -21,6 +21,11 @@ public record JobFilter(JobState state, String type, int limit, int offset) {
         }
         if (offset < 0) {
             throw new IllegalArgumentException("offset must not be negative: " + offset);
+        }
+        // No store can hold a NUL in text, so nothing could match; PostgreSQL rejects the query
+        // outright, which the caller would see as a storage failure instead of a bad argument.
+        if (type != null && type.indexOf('\u0000') >= 0) {
+            throw new IllegalArgumentException("type must not contain NUL characters");
         }
     }
 

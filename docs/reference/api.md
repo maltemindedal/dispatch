@@ -176,4 +176,6 @@ Problem documents per RFC 9457, `Content-Type: application/problem+json`:
 ```
 
 Validation failures (`400`) also carry an `errors` object mapping field names to
-messages.
+messages. When the job store itself fails (a lost database connection, an exhausted pool) the
+answer is `500` with the title `Job store unavailable` and a fixed detail; the cause is in the
+server log, not in the response.
