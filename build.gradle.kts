@@ -39,7 +39,5 @@ subprojects {
             events("passed", "skipped", "failed")
             exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
         }
-        // Tests exercise virtual threads and timing-sensitive queue behaviour.
-        systemProperty("java.util.logging.manager", "java.util.logging.LogManager")
     }
 }
