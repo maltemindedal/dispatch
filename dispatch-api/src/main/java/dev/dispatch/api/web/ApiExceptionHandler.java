@@ -3,6 +3,7 @@ package dev.dispatch.api.web;
 import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.IllegalJobTransitionException;
 import dev.dispatch.core.store.JobStoreException;
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -21,6 +22,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
+
+    /**
+     * The documented {@code type} of every error body. Set explicitly: it used to be the
+     * framework's default, and a framework that stops supplying one would silently drop the field
+     * from the JSON.
+     */
+    private static final URI ABOUT_BLANK = URI.create("about:blank");
 
     @ExceptionHandler(JobNotFoundException.class)
     ProblemDetail handleNotFound(JobNotFoundException e) {
@@ -82,6 +90,7 @@ public class ApiExceptionHandler {
 
     private static ProblemDetail problem(HttpStatus status, String title, String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setType(ABOUT_BLANK);
         problem.setTitle(title);
         return problem;
     }
