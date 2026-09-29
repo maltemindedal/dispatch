@@ -156,10 +156,13 @@ public final class WorkerPool implements AutoCloseable {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
-            } catch (RuntimeException e) {
-                // Storage is unhappy. Never spin on it: back off a poll interval and retry.
+            } catch (Throwable t) {
+                // Storage is unhappy. Never spin on it: back off a poll interval and retry. An
+                // Error (a driver's stack overflow, a class that fails to load) is treated like
+                // any other failure of one cycle: if it ended this thread, the pool would go on
+                // reporting itself running while nothing was ever claimed again.
                 log.error("Dispatcher {} hit an unexpected error; backing off",
-                        config.workerId(), e);
+                        config.workerId(), t);
                 LockSupport.parkNanos(this, config.pollInterval().toNanos());
             }
         }
@@ -209,48 +212,52 @@ public final class WorkerPool implements AutoCloseable {
     private DispatchResult dispatchCycle() throws InterruptedException {
         // Block until there is room for at least one job; this is the backpressure valve.
         int budget = capacity.reserve(config.claimBatchSize());
-        if (!accepting) {
-            capacity.release(budget);
-            return DispatchResult.nothing(budget);
-        }
-
-        List<Job> claimed;
+        // The permits this cycle holds that no running job owns yet. Whatever is still owed when
+        // the cycle ends, however it ends, goes back in the finally block; a job that has been
+        // handed to the executor owns its permit from then on and returns it itself.
+        int owed = budget;
         try {
-            claimed = store.claim(
-                    config.workerId(), budget, config.visibilityTimeout(), clock.instant());
-        } catch (RuntimeException e) {
-            capacity.release(budget);
-            throw e;
-        }
-
-        // Hand back the permits the claim did not use.
-        capacity.release(budget - claimed.size());
-        if (claimed.isEmpty()) {
-            return DispatchResult.nothing(budget);
-        }
-        metrics.jobsClaimed(claimed.size());
-
-        CountDownLatch finished = new CountDownLatch(claimed.size());
-        for (Job job : claimed) {
-            try {
-                executor.execute(() -> {
-                    try {
-                        runJob(job);
-                    } finally {
-                        capacity.release(1);
-                        finished.countDown();
-                    }
-                });
-            } catch (RejectedExecutionException e) {
-                // Shutdown raced with this claim. Leave the job RUNNING and let its visibility
-                // lease expire. The sweeper on this or another instance will pick it back up.
-                capacity.release(1);
-                finished.countDown();
-                log.warn("Job {} claimed but not dispatched (pool shutting down); "
-                        + "it will be reclaimed after the visibility timeout", job.id());
+            if (!accepting) {
+                return DispatchResult.nothing(budget);
             }
+
+            List<Job> claimed = store.claim(
+                    config.workerId(), budget, config.visibilityTimeout(), clock.instant());
+
+            // Hand back the permits the claim did not use.
+            capacity.release(budget - claimed.size());
+            owed = claimed.size();
+            if (claimed.isEmpty()) {
+                return DispatchResult.nothing(budget);
+            }
+            metrics.jobsClaimed(claimed.size());
+
+            CountDownLatch finished = new CountDownLatch(claimed.size());
+            for (Job job : claimed) {
+                try {
+                    executor.execute(() -> {
+                        try {
+                            runJob(job);
+                        } finally {
+                            capacity.release(1);
+                            finished.countDown();
+                        }
+                    });
+                    owed--;
+                } catch (RejectedExecutionException e) {
+                    // Shutdown raced with this claim. Leave the job RUNNING and let its visibility
+                    // lease expire. The sweeper on this or another instance will pick it back up.
+                    capacity.release(1);
+                    owed--;
+                    finished.countDown();
+                    log.warn("Job {} claimed but not dispatched (pool shutting down); "
+                            + "it will be reclaimed after the visibility timeout", job.id());
+                }
+            }
+            return new DispatchResult(claimed, budget, finished);
+        } finally {
+            capacity.release(owed);
         }
-        return new DispatchResult(claimed, budget, finished);
     }
 
     /**

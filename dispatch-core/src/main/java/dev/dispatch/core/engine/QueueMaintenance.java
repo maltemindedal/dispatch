@@ -94,10 +94,12 @@ public final class QueueMaintenance implements AutoCloseable {
     private void sweepQuietly() {
         try {
             sweep();
-        } catch (RuntimeException e) {
+        } catch (Throwable t) {
             // Never let a transient storage error kill the scheduled task. If this throws,
             // scheduleWithFixedDelay silently stops running it, and nothing recovers after that.
-            log.error("Maintenance sweep failed; will retry next interval", e);
+            // That includes an Error: the exception is captured in a Future nobody reads, so a
+            // sweeper ended by one would stop without leaving so much as a stack trace.
+            log.error("Maintenance sweep failed; will retry next interval", t);
         }
     }
 
