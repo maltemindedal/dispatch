@@ -20,6 +20,21 @@ The suite has around 180 tests (as of 2026-08; run `./gradlew test` for the curr
 timing-heavy tests use a controllable clock instead of sleeps, which keeps the suite fast and
 avoids flaky timing.
 
+## Upgrading Gradle
+
+The wrapper pins the checksum of the Gradle distribution (`distributionSha256Sum` in
+[`gradle/wrapper/gradle-wrapper.properties`](../gradle/wrapper/gradle-wrapper.properties)), so a
+download that does not match fails instead of running. That means the pin has to move with the
+version. Take the checksum from <https://gradle.org/release-checksums/> and pass it:
+
+```bash
+./gradlew wrapper --gradle-version <version> --distribution-type bin \
+    --gradle-distribution-sha256-sum <sha256 of gradle-<version>-bin.zip>
+```
+
+Only `gradle-wrapper.properties` should change; if the wrapper jar or scripts change too, look at
+why before committing.
+
 ## Test architecture
 
 These tests cover the main contracts and execution paths:
