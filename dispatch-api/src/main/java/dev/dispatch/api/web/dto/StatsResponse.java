@@ -38,7 +38,8 @@ public record StatsResponse(
      * @param leasesLost         results that could not be recorded because the lease was gone
      * @param inFlight           jobs running right now
      * @param failureRate        failed attempts over finished attempts, in [0, 1]
-     * @param averageExecutionMs mean handler wall time
+     * @param averageExecutionMs mean wall time of a run, from the start of the attempt until its
+     *                           outcome was recorded
      */
     public record InstanceStats(
             long submitted,

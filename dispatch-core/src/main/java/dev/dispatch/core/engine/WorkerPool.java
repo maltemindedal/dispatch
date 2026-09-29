@@ -355,7 +355,7 @@ public final class WorkerPool implements AutoCloseable {
                 // outcome is recorded: with it set earlier the recording is what fails.
                 Thread.currentThread().interrupt();
             }
-            metrics.jobFinished(Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            metrics.jobFinished(Duration.ofNanos(System.nanoTime() - startNanos));
         }
     }
 

@@ -128,7 +128,7 @@ The response separates cluster-wide facts from process-local ones:
 | `leasesLost` | Results that could not be recorded because the lease was gone. |
 | `inFlight` | Jobs running right now. |
 | `failureRate` | Failed attempts over finished attempts, in [0, 1]. Per *attempt*, not per job: a job that fails twice then succeeds contributes two failures and one success. |
-| `averageExecutionMs` | Mean handler wall time. |
+| `averageExecutionMs` | Mean wall time of a run, in milliseconds with the fraction: from the start of the attempt until its outcome was recorded, so it includes the store round trip, not only the handler. |
 
 ## The job resource
 
