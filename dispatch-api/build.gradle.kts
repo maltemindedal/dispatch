@@ -1,12 +1,15 @@
 plugins {
     java
     alias(libs.plugins.spring.boot)
-    alias(libs.plugins.spring.dependency.management)
 }
 
 description = "Spring Boot REST API in front of the queue engine."
 
 dependencies {
+    // Boot's dependency versions, applied as a plain Gradle platform. Constraints only raise a
+    // version, so a version the catalog or another module asks for still wins when it is higher.
+    implementation(platform(org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES))
+
     implementation(project(":dispatch-core"))
     implementation(project(":dispatch-postgres"))
 
