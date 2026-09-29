@@ -34,7 +34,7 @@ operational "kill" that no code path currently performs: today the only way into
 | `RUNNING` | Claimed by a worker; holds a visibility lease that expires at `lockedUntil`. |
 | `COMPLETED` | Finished successfully. Terminal. |
 | `FAILED` | An attempt failed; a retry is pending once the backoff at `scheduledAt` elapses. |
-| `DEAD` | Retries exhausted or permanently failed. The dead-letter state; only a manual retry revives it. |
+| `DEAD` | Retries exhausted (including a last attempt whose worker vanished), or permanently failed. The dead-letter state; only a manual retry revives it. |
 
 ## Three distinctions worth remembering
 
@@ -59,8 +59,8 @@ These are what the six states are *for*:
 - **The handler outcome** moves `RUNNING` to `COMPLETED`, `FAILED` (retries left, backoff
   scheduled), or `DEAD` (budget exhausted, or `PermanentJobFailureException`).
 - **The maintenance sweeper**, on any instance, promotes due `SCHEDULED` and `FAILED` rows to
-  `PENDING`, and returns `RUNNING` rows with expired leases to `PENDING`
-  ([crash recovery](reliability.md#visibility-timeout)).
+  `PENDING`, and returns `RUNNING` rows with expired leases to `PENDING`, or to `DEAD` when the
+  lost attempt was the last the budget allowed ([crash recovery](reliability.md#visibility-timeout)).
 - **Operators** revive `DEAD → PENDING` with a fresh budget via the API.
 
 Every one of these paths calls `JobState.requireTransitionTo`, so an illegal move throws rather

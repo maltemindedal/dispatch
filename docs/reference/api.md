@@ -124,7 +124,7 @@ The response separates cluster-wide facts from process-local ones:
 | `failedAttempts` | Attempts that threw here. |
 | `retriesScheduled` | Failures put back on the queue with a backoff. |
 | `deadLettered` | Jobs this instance moved to `DEAD`. |
-| `leasesReclaimed` | Abandoned leases this instance's sweeper recovered. |
+| `leasesReclaimed` | Abandoned leases this instance's sweeper took back: the job went to `PENDING`, or to `DEAD` if that was its last permitted attempt. |
 | `leasesLost` | Results that could not be recorded because the lease was gone. |
 | `inFlight` | Jobs running right now. |
 | `failureRate` | Failed attempts over finished attempts, in [0, 1]. Per *attempt*, not per job: a job that fails twice then succeeds contributes two failures and one success. |

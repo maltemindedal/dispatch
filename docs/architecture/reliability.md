@@ -52,7 +52,11 @@ sits in `RUNNING` with a lease nobody will ever release, and the maintenance swe
 instance returns it to `PENDING`. That reclaim is the entire crash-recovery story.
 
 The reclaimed attempt still counts against the retry budget. That is deliberate: a job that
-reliably kills its worker would otherwise retry forever.
+reliably kills its worker would otherwise retry forever. So when the attempt that was lost was the
+last one the budget allowed (`maxRetries + 1` attempts in all), the sweeper dead-letters the job
+(`DEAD`, with an explanation in `lastError`) instead of returning it to `PENDING`. The same holds
+for a handler that simply outruns the visibility timeout on its last attempt: with no heartbeat
+(see [limitations](limitations.md)), the engine cannot tell it from a crash.
 
 Set `visibility-timeout` comfortably above your slowest handler. Too short and healthy jobs get
 run twice; too long and crash recovery crawls.

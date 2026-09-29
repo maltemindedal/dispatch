@@ -164,12 +164,14 @@ public final class JobStore implements AutoCloseable {
 
     /**
      * Returns {@link JobSelection#EXPIRED_LEASE} jobs to PENDING, which is the crash-recovery path. A worker
-     * that died mid-job leaves its row RUNNING forever otherwise.
+     * that died mid-job leaves its row RUNNING forever otherwise. A job whose expired attempt was
+     * its last permitted one goes to DEAD instead (see {@link Job#reclaimed}), so a job that keeps
+     * killing its workers cannot be retried without end.
      *
-     * @return how many leases were reclaimed
+     * @return how many leases were reclaimed, whether the job was re-queued or dead-lettered
      */
     public int reclaimExpiredLeases(Instant now, int limit) {
-        return sweep(JobSelection.EXPIRED_LEASE, now, limit, job -> job.leaseExpired(now));
+        return sweep(JobSelection.EXPIRED_LEASE, now, limit, job -> job.reclaimed(now));
     }
 
     // ---------------------------------------------------------------- operator actions

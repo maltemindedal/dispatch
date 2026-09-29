@@ -175,4 +175,45 @@ class JobTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("maxRetries");
     }
+
+    @Test
+    @DisplayName("reclaiming a job that still has retries re-queues it, exactly as an expired lease does")
+    void reclaimWithRetriesLeftRequeues() {
+        Job running = pendingJob(3).claimedBy("crashed-worker", NOW, LEASE);
+        Instant later = NOW.plus(LEASE).plusSeconds(1);
+
+        Job reclaimed = running.reclaimed(later);
+
+        assertThat(reclaimed).isEqualTo(running.leaseExpired(later));
+        assertThat(reclaimed.state()).isEqualTo(JobState.PENDING);
+        assertThat(reclaimed.attempt()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("reclaiming a job on its last permitted attempt dead-letters it")
+    void reclaimOnTheLastAttemptDeadLetters() {
+        // maxRetries=1 allows two attempts; the second is the last.
+        Job lastAttempt = pendingJob(1).claimedBy("w", NOW, LEASE)
+                .leaseExpired(NOW).claimedBy("crashed-worker", NOW, LEASE);
+        assertThat(lastAttempt.retriesExhausted()).isTrue();
+        Instant later = NOW.plus(LEASE).plusSeconds(1);
+
+        Job dead = lastAttempt.reclaimed(later);
+
+        assertThat(dead.state()).isEqualTo(JobState.DEAD);
+        assertThat(dead.attempt()).isEqualTo(2);
+        assertThat(dead.lockedBy()).isNull();
+        assertThat(dead.lockedUntil()).isNull();
+        assertThat(dead.updatedAt()).isEqualTo(later);
+        assertThat(dead.lastError())
+                .contains("crashed-worker").contains("last permitted attempt");
+    }
+
+    @Test
+    @DisplayName("with no retries allowed, the only attempt is the last one")
+    void reclaimWithNoRetriesAllowedDeadLetters() {
+        Job running = pendingJob(0).claimedBy("crashed-worker", NOW, LEASE);
+
+        assertThat(running.reclaimed(NOW.plus(LEASE)).state()).isEqualTo(JobState.DEAD);
+    }
 }

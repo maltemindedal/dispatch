@@ -19,7 +19,8 @@ import org.slf4j.LoggerFactory;
  *       retry backoff expire.</li>
  *   <li><b>Reclaim expired leases.</b> A worker that was killed mid-job leaves its row RUNNING
  *       forever. Returning rows whose visibility lease has lapsed to PENDING is the entire
- *       crash-recovery story.</li>
+ *       crash-recovery story, except that a job whose lapsed attempt was its last permitted one is
+ *       dead-lettered instead of retried.</li>
  * </ol>
  *
  * <p>Every instance runs this against the shared store, and that is fine. The operations are

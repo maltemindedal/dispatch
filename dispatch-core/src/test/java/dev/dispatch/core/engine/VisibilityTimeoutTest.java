@@ -112,6 +112,25 @@ class VisibilityTimeoutTest {
     }
 
     @Test
+    @DisplayName("a job that kills its worker on the last permitted attempt ends DEAD and is not re-run")
+    void jobThatKillsItsLastWorkerIsDeadLettered() {
+        Job job = store.insert(new JobSubmission("record", "poison", 0, 0, null), clock.instant());
+        store.claim("crashed-worker", 1, VISIBILITY_TIMEOUT, clock.instant());
+
+        startQueue();
+        clock.advance(VISIBILITY_TIMEOUT.plusSeconds(1));
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.DEAD));
+        // It stays dead: no handler run, no further claim, however long the sweeper keeps going.
+        await().during(Duration.ofMillis(300)).atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+            assertThat(executed).isEmpty();
+            assertThat(store.find(job.id()).orElseThrow().attempt()).isEqualTo(1);
+        });
+        assertThat(queue.metrics().leasesReclaimed()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("a job whose lease has not expired is never stolen")
     void liveLeaseIsRespected() {
         Job job = store.insert(new JobSubmission("record", "busy", 0, 3, null), clock.instant());

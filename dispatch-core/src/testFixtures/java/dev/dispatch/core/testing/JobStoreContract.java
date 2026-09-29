@@ -420,6 +420,53 @@ public abstract class JobStoreContract {
         }
 
         @Test
+        @DisplayName("a reclaim on the last permitted attempt dead-letters the job instead of re-queueing it")
+        void reclaimOnTheLastAttemptDeadLetters() {
+            // maxRetries=0: exactly one attempt, and a worker that dies mid-way has spent it.
+            Job job = store.insert(new JobSubmission("send-email", "{}", 0, 0, null), now());
+            store.claim(WORKER, 1, LEASE, now());
+            clock.advance(LEASE.plusSeconds(1));
+
+            assertThat(store.reclaimExpiredLeases(now(), 100)).isEqualTo(1);
+
+            Job dead = reload(job);
+            assertThat(dead.state()).isEqualTo(JobState.DEAD);
+            assertThat(dead.attempt()).isEqualTo(1);
+            assertThat(dead.lockedBy()).isNull();
+            assertThat(dead.lockedUntil()).isNull();
+            assertThat(dead.lastError()).contains(WORKER);
+            // Nobody picks it up again, and the worker that lost it cannot resurrect it.
+            assertThat(store.claim(OTHER_WORKER, 10, LEASE, now())).isEmpty();
+            assertThat(store.complete(job.id(), WORKER, now())).isEmpty();
+            assertThat(reload(job).state()).isEqualTo(JobState.DEAD);
+            // It is an ordinary dead letter: an operator can revive it with a fresh budget.
+            assertThat(store.requeueDeadJob(job.id(), now())).isInstanceOf(JobActionResult.Done.class);
+            assertThat(reload(job).state()).isEqualTo(JobState.PENDING);
+            assertThat(reload(job).attempt()).isZero();
+        }
+
+        @Test
+        @DisplayName("each crash spends one attempt: three retries survive three reclaims and die on the fourth")
+        void everyReclaimedAttemptCountsAgainstTheBudget() {
+            Job job = store.insert(new JobSubmission("send-email", "{}", 0, 3, null), now());
+
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                assertThat(store.claim(WORKER, 1, LEASE, now())).hasSize(1);
+                clock.advance(LEASE.plusSeconds(1));
+                assertThat(store.reclaimExpiredLeases(now(), 100)).isEqualTo(1);
+                assertThat(reload(job).state()).as("after crash %d", attempt)
+                        .isEqualTo(JobState.PENDING);
+                assertThat(reload(job).attempt()).isEqualTo(attempt);
+            }
+
+            assertThat(store.claim(WORKER, 1, LEASE, now())).hasSize(1);
+            clock.advance(LEASE.plusSeconds(1));
+            assertThat(store.reclaimExpiredLeases(now(), 100)).isEqualTo(1);
+            assertThat(reload(job).state()).isEqualTo(JobState.DEAD);
+            assertThat(reload(job).attempt()).isEqualTo(4);
+        }
+
+        @Test
         @DisplayName("the original worker cannot record a result after being reclaimed")
         void reclaimedJobRejectsOriginalWorker() {
             Job job = insertDue();
