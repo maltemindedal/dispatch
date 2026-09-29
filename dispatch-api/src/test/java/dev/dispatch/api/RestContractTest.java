@@ -84,11 +84,14 @@ class RestContractTest {
         assertThat(r.status()).isEqualTo(201);
         assertThat(r.contentType()).isEqualTo(JSON);
         assertThat(r.location()).matches("/jobs/[0-9a-f-]{36}");
+        // The emoji comes back as the character itself. Jackson 2 wrote a character outside the
+        // Basic Multilingual Plane as an escaped surrogate pair; Jackson 3 writes it as UTF-8.
+        // Both spell the same JSON string, so the only thing that changed is how it is spelled.
         assertThat(r.normalized()).isEqualTo("{\"id\":\"<id>\",\"type\":\"send-email\","
                 + "\"payload\":{\"to\":\"a@b.c\",\"n\":1,\"f\":1.0,\"e\":1000.0,\"d\":0.1,"
                 + "\"big\":12345678901234567890,\"neg\":-0.0,\"nul\":null,"
                 + "\"arr\":[1,\"two\",{\"z\":3,\"a\":4}],"
-                + "\"uni\":\"héllo ☃ \\uD83D\\uDE00\",\"nested\":{\"b\":1,\"a\":2}},"
+                + "\"uni\":\"héllo ☃ 😀\",\"nested\":{\"b\":1,\"a\":2}},"
                 + "\"priority\":5,\"maxRetries\":7,\"attempt\":0,\"retriesRemaining\":7,"
                 + "\"state\":\"SCHEDULED\",\"scheduledAt\":\"2027-01-01T00:00:00Z\","
                 + "\"createdAt\":\"<ts>\",\"updatedAt\":\"<ts>\"}");

@@ -12,8 +12,9 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.resttestclient.TestRestTemplate;
+import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -48,6 +49,7 @@ import org.testcontainers.utility.DockerImageName;
 // container's connection details. That is deliberate: a property this file gets wrong (a Hikari
 // setting written as a Duration, say) should fail here rather than at the first real startup.
 @ActiveProfiles("postgres")
+@AutoConfigureTestRestTemplate
 @Import(TestHandlers.class)
 @DisplayName("End to end on PostgreSQL")
 class PostgresEndToEndTest {
@@ -86,14 +88,14 @@ class PostgresEndToEndTest {
         JobResponse job = created.getBody();
         assertThat(job).isNotNull();
         assertThat(job.state()).isEqualTo(JobState.PENDING);
-        assertThat(job.payload().get("to").asText()).isEqualTo("someone@example.com");
+        assertThat(job.payload().get("to").asString()).isEqualTo("someone@example.com");
 
         await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> {
             JobResponse current = rest.getForObject("/jobs/" + job.id(), JobResponse.class);
             assertThat(current.state()).isEqualTo(JobState.COMPLETED);
             assertThat(current.attempt()).isEqualTo(1);
             // The payload survived the round trip through a TEXT column unchanged.
-            assertThat(current.payload().get("to").asText()).isEqualTo("someone@example.com");
+            assertThat(current.payload().get("to").asString()).isEqualTo("someone@example.com");
         });
     }
 

@@ -46,7 +46,7 @@ public class ApiExceptionHandler {
      */
     @ExceptionHandler(UnknownJobTypeException.class)
     ProblemDetail handleUnknownType(UnknownJobTypeException e) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "Unknown job type", e.getMessage());
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Unknown job type", e.getMessage());
     }
 
     /**

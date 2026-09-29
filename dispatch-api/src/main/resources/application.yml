@@ -14,14 +14,20 @@ spring:
 
   jackson:
     default-property-inclusion: non_null
+    # Boot 4 moved to Jackson 3, whose own defaults differ from Jackson 2's. This is Boot's switch
+    # for configuring it the way Boot configured Jackson 2, so the request and response format
+    # stays what it was. RestContractTest holds the wire format to that.
+    use-jackson2-defaults: true
+
+  web:
+    error:
+      # Boot 4 moved this property from server.error.include-message.
+      include-message: always
 
 server:
   # On SIGTERM, stop accepting requests and let in-flight ones finish before the context closes.
   # The queue's own draining then happens when the JobQueue bean is destroyed.
   shutdown: graceful
-
-  error:
-    include-message: always
 
 dispatch:
   # jdbc (shared and durable) or memory (process-local, lost on restart)
