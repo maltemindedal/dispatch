@@ -1,0 +1,43 @@
+# Keeps the pinned versions moving: the SHA-pinned GitHub Actions, the Gradle wrapper and version
+# catalog, and the PostgreSQL image in docker-compose.yml.
+#
+# Every update waits a week after release (`cooldown`), matching how this repository picks
+# versions, and minor/patch bumps of Gradle dependencies arrive as one grouped pull request.
+#
+# Not covered, so bump by hand together with docker-compose.yml: the PostgreSQL image name in
+# dispatch-postgres/src/test/java/.../PostgresTestSupport.java and PostgresEndToEndTest.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      gradle-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Framework majors are migrations, not routine bumps; do them deliberately.
+      - dependency-name: org.springframework.boot
+        update-types: ['version-update:semver-major']
+      - dependency-name: org.springframework.boot:*
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      # A new PostgreSQL major changes the data directory layout of the image's volume.
+      - dependency-name: postgres
+        update-types: ['version-update:semver-major']
