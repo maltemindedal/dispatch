@@ -46,8 +46,10 @@ The default profile is `dev` (set via `spring.profiles.default` in `application.
 ### The dev profile (local development)
 
 [`application-dev.yml`](../../dispatch-api/src/main/resources/application-dev.yml). In-memory H2
-(`jdbc:h2:mem:dispatch`), no Docker required, `dev.dispatch` logging at DEBUG, and the H2 web
-console enabled at `/h2-console`.
+(`jdbc:h2:mem:dispatch`), no Docker required, and `dev.dispatch` logging at DEBUG. The H2 web
+console is off; start with `DISPATCH_H2_CONSOLE=true` to serve it at `/h2-console` (H2 answers
+only peers on the local machine). It can run SQL and, through H2's own features, arbitrary code,
+which is why it does not come on by itself.
 
 The same `JdbcJobRows` adapter runs here as against PostgreSQL, with the same SQL and claim query. What H2
 does not reproduce is contention behaviour: its locking is coarser, so a second instance pointed

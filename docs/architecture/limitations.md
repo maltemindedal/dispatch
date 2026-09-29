@@ -39,9 +39,9 @@ This is a list of what the system does not do, in roughly the order to fix it.
    paging degrades. Every endpoint, including cancel and retry, is open to anyone who can reach the
    port; payloads and `lastError` are readable and can carry personal data; and the server
    listens on all interfaces. Run it on a trusted network or behind a reverse proxy that
-   authenticates. The `dev` profile also serves the H2 web console at `/h2-console`, meant for
-   local use only; use the `postgres` profile, or set `spring.h2.console.enabled=false`, for
-   anything that is not on your own machine. `POST /jobs` bodies are capped
+   authenticates. The `dev` profile can also serve the H2 web console at `/h2-console`, but only
+   when started with `DISPATCH_H2_CONSOLE=true`; it is meant for local use only, so leave it off
+   (and use the `postgres` profile) for anything that is not on your own machine. `POST /jobs` bodies are capped
    (`dispatch.max-payload-bytes`, 1 MiB), but `GET /jobs` is not bounded by payload size: it returns
    up to 1000 rows with their full payloads, so a deployment that stores large payloads should ask
    for a small `limit`.

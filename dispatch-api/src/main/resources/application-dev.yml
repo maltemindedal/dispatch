@@ -15,9 +15,13 @@ spring:
     hikari:
       maximum-pool-size: 20
 
+  # The H2 web console runs SQL and, through H2's own features, arbitrary code, and this is the
+  # profile people start by accident. So it is off unless asked for:
+  #   DISPATCH_H2_CONSOLE=true ./gradlew :dispatch-api:bootRun
+  # It is then served at /h2-console, only to peers on the local machine.
   h2:
     console:
-      enabled: true
+      enabled: ${DISPATCH_H2_CONSOLE:false}
       path: /h2-console
 
 logging:

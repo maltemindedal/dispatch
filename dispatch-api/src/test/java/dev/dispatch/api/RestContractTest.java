@@ -424,6 +424,10 @@ class RestContractTest {
         assertFrameworkError(slash, 404, "Not Found", "/jobs/");
 
         assertThat(get("/actuator/health").status()).isEqualTo(404);
+
+        // The dev profile does not switch the H2 console on by itself; H2ConsoleOptInTest covers
+        // asking for it.
+        assertThat(get("/h2-console/").status()).isEqualTo(404);
     }
 
     // ------------------------------------------------------------------ helpers
