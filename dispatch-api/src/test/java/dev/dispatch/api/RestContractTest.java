@@ -96,6 +96,19 @@ class RestContractTest {
     }
 
     @Test
+    @DisplayName("instants are ISO-8601 strings with the fraction the store holds, never numbers")
+    void instantsAreIsoStrings() {
+        Response r = post("{\"type\":\"send-email\",\"scheduledAt\":\"" + FUTURE + "\"}");
+
+        // normalized() masks these two fields, so read them from the raw body.
+        assertThat(r.body()).containsPattern(
+                "\"createdAt\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z\"");
+        assertThat(r.body()).containsPattern(
+                "\"updatedAt\":\"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z\"");
+        assertThat(r.body()).contains("\"scheduledAt\":\"2027-01-01T00:00:00Z\"");
+    }
+
+    @Test
     @DisplayName("POST /jobs with only a type takes the documented defaults and an empty payload")
     void submitMinimal() {
         Response r = post("{\"type\":\"resize-image\",\"scheduledAt\":\"" + FUTURE + "\"}");
