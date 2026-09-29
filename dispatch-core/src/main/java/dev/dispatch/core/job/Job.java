@@ -101,12 +101,24 @@ public record Job(
     }
 
     /**
-     * True while {@code workerId} holds this job's visibility lease. Stores check this before
-     * recording any result: a worker that stalled past its visibility timeout must not overwrite
-     * whoever legitimately took the job over.
+     * True while {@code workerId} holds this job's visibility lease. It says nothing about
+     * <em>which attempt</em> holds it: the same worker that lost a lease and claimed the job again
+     * satisfies this for the old attempt and the new one alike. Recording an outcome therefore
+     * uses {@link #leaseHeldBy(String, int)}.
      */
     public boolean leaseHeldBy(String workerId) {
         return state == JobState.RUNNING && workerId.equals(lockedBy);
+    }
+
+    /**
+     * True while {@code workerId} holds this job's visibility lease <em>as attempt
+     * {@code attempt}</em>. Stores check this before recording any result: a worker that stalled
+     * past its visibility timeout must not overwrite whoever took the job over, and neither may an
+     * earlier attempt of the same worker overwrite the attempt that superseded it. The attempt
+     * number is the one on the snapshot the claim returned.
+     */
+    public boolean leaseHeldBy(String workerId, int attempt) {
+        return leaseHeldBy(workerId) && this.attempt == attempt;
     }
 
     /** PENDING -> RUNNING: takes a visibility lease and counts the attempt. */

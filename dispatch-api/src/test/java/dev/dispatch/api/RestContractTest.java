@@ -436,7 +436,7 @@ class RestContractTest {
         Job job = store.insert(new JobSubmission("send-email", "{}", 0, maxRetries, PAST),
                 Instant.now());
         store.claim(WORKER, 1, Duration.ofMinutes(5), Instant.now());
-        return store.deadLetter(job.id(), WORKER, "boom", Instant.now()).orElseThrow();
+        return store.deadLetter(job.id(), WORKER, 1, "boom", Instant.now()).orElseThrow();
     }
 
     private void assertProblem(

@@ -160,7 +160,7 @@ class VisibilityTimeoutTest {
 
         // The stalled worker finally finishes and tries to report. Too late: it lost the lease,
         // and letting it write now would clobber the result that actually happened.
-        assertThat(store.complete(job.id(), "stalled-worker", clock.instant())).isEmpty();
+        assertThat(store.complete(job.id(), "stalled-worker", 1, clock.instant())).isEmpty();
         assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.COMPLETED);
     }
 

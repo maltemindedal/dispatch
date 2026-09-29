@@ -177,6 +177,22 @@ class JobTest {
     }
 
     @Test
+    @DisplayName("a lease is held by a worker as a particular attempt")
+    void leaseHeldByWorkerAndAttempt() {
+        Job first = pendingJob(3).claimedBy("worker-1", NOW, LEASE);
+        Job second = first.leaseExpired(NOW.plus(LEASE)).claimedBy("worker-1", NOW.plus(LEASE), LEASE);
+
+        assertThat(first.leaseHeldBy("worker-1", 1)).isTrue();
+        assertThat(first.leaseHeldBy("worker-1", 2)).isFalse();
+        assertThat(first.leaseHeldBy("worker-2", 1)).isFalse();
+        // The same worker holds both, which is exactly why the worker id alone cannot tell them apart.
+        assertThat(second.leaseHeldBy("worker-1")).isTrue();
+        assertThat(second.leaseHeldBy("worker-1", 2)).isTrue();
+        assertThat(second.leaseHeldBy("worker-1", 1)).isFalse();
+        assertThat(second.completed(NOW).leaseHeldBy("worker-1", 2)).isFalse();
+    }
+
+    @Test
     @DisplayName("reclaiming a job that still has retries re-queues it, exactly as an expired lease does")
     void reclaimWithRetriesLeftRequeues() {
         Job running = pendingJob(3).claimedBy("crashed-worker", NOW, LEASE);

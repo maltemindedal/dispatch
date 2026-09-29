@@ -5,7 +5,9 @@ This is a list of what the system does not do, in roughly the order to fix it.
 1. **No lease heartbeat.** A handler that outruns its visibility timeout gets its job
    re-delivered while it's still working. The fix is a periodic `locked_until` extension from the
    running handler. Today the mitigation is "set the timeout high enough", which is a real
-   limitation, not a design choice.
+   limitation, not a design choice. (What it can no longer do is corrupt the record: the overrunning
+   attempt's late result is rejected as a lost lease, even when the same instance re-claimed the
+   job. The job can still run twice, so handlers must be idempotent.)
 2. **`InMemoryJobRows` scans and sorts the whole map to answer a selection.** O(n log n) per
    claim. It renders the same `JobSelection` as the SQL `ORDER BY`, so both adapters behave
    identically. A priority index would be the first optimisation if it were

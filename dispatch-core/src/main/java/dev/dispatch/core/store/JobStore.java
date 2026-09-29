@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
@@ -40,9 +41,10 @@ import java.util.function.UnaryOperator;
  *       so a test written against one holds for the other. The id tiebreak makes the order total
  *       rather than universal; see {@link JobSelection} for what that does and does not buy.</li>
  *   <li><b>Lease ownership.</b> {@link #complete}, {@link #fail} and {@link #deadLetter} apply only
- *       if the named worker still holds the lease, and return {@link Optional#empty()} otherwise.
- *       That is what stops a worker that stalled past its visibility timeout from stomping on the
- *       worker that legitimately took the job over.</li>
+ *       if the named worker still holds the lease <em>as the named attempt</em>, and return
+ *       {@link Optional#empty()} otherwise. That is what stops a worker that stalled past its
+ *       visibility timeout from stomping on whoever legitimately took the job over, including
+ *       that same worker's own later attempt.</li>
  *   <li><b>Atomic transitions.</b> Each method is a single atomic unit against concurrent
  *       callers.</li>
  *   <li><b>One failure vocabulary.</b> Storage failures become {@link JobStoreException} values,
@@ -135,19 +137,72 @@ public final class JobStore implements AutoCloseable {
 
     // ---------------------------------------------------------------- outcomes
 
-    /** RUNNING -> COMPLETED. Empty if {@code workerId} no longer holds the lease. */
+    /**
+     * RUNNING -> COMPLETED. Empty if {@code workerId} no longer holds the lease <em>as attempt
+     * {@code attempt}</em>: it was reclaimed, or superseded by a later attempt.
+     *
+     * @param attempt the attempt number on the snapshot {@link #claim} returned
+     */
+    public Optional<Job> complete(UUID id, String workerId, int attempt, Instant now) {
+        return transitionLeased(id, job -> job.leaseHeldBy(workerId, attempt),
+                job -> job.completed(now));
+    }
+
+    /**
+     * RUNNING -> FAILED, parked until {@code retryAt}. Empty if the lease was lost, as for
+     * {@link #complete(UUID, String, int, Instant)}.
+     */
+    public Optional<Job> fail(
+            UUID id, String workerId, int attempt, String error, Instant retryAt, Instant now) {
+        return transitionLeased(id, job -> job.leaseHeldBy(workerId, attempt),
+                job -> job.failedWithRetryAt(retryAt, error, now));
+    }
+
+    /**
+     * RUNNING -> DEAD. Empty if the lease was lost, as for
+     * {@link #complete(UUID, String, int, Instant)}.
+     */
+    public Optional<Job> deadLetter(
+            UUID id, String workerId, int attempt, String error, Instant now) {
+        return transitionLeased(id, job -> job.leaseHeldBy(workerId, attempt),
+                job -> job.deadLettered(error, now));
+    }
+
+    /**
+     * RUNNING -> COMPLETED. Empty if {@code workerId} no longer holds the lease.
+     *
+     * @deprecated Checks the worker only. An earlier attempt of the same worker, one that outran
+     *             its visibility timeout and was reclaimed and re-claimed by that worker, passes
+     *             the check and records its outcome on the attempt that superseded it. Use
+     *             {@link #complete(UUID, String, int, Instant)}.
+     */
+    @Deprecated
     public Optional<Job> complete(UUID id, String workerId, Instant now) {
-        return transitionLeased(id, workerId, job -> job.completed(now));
+        return transitionLeased(id, job -> job.leaseHeldBy(workerId), job -> job.completed(now));
     }
 
-    /** RUNNING -> FAILED, parked until {@code retryAt}. Empty if the lease was lost. */
+    /**
+     * RUNNING -> FAILED, parked until {@code retryAt}. Empty if the lease was lost.
+     *
+     * @deprecated Checks the worker only; see {@link #complete(UUID, String, Instant)}. Use
+     *             {@link #fail(UUID, String, int, String, Instant, Instant)}.
+     */
+    @Deprecated
     public Optional<Job> fail(UUID id, String workerId, String error, Instant retryAt, Instant now) {
-        return transitionLeased(id, workerId, job -> job.failedWithRetryAt(retryAt, error, now));
+        return transitionLeased(id, job -> job.leaseHeldBy(workerId),
+                job -> job.failedWithRetryAt(retryAt, error, now));
     }
 
-    /** RUNNING -> DEAD. Empty if the lease was lost. */
+    /**
+     * RUNNING -> DEAD. Empty if the lease was lost.
+     *
+     * @deprecated Checks the worker only; see {@link #complete(UUID, String, Instant)}. Use
+     *             {@link #deadLetter(UUID, String, int, String, Instant)}.
+     */
+    @Deprecated
     public Optional<Job> deadLetter(UUID id, String workerId, String error, Instant now) {
-        return transitionLeased(id, workerId, job -> job.deadLettered(error, now));
+        return transitionLeased(id, job -> job.leaseHeldBy(workerId),
+                job -> job.deadLettered(error, now));
     }
 
     // ---------------------------------------------------------------- sweeping
@@ -225,15 +280,17 @@ public final class JobStore implements AutoCloseable {
     // ---------------------------------------------------------------- internals
 
     /**
-     * Loads a job exclusively, refuses unless the caller still holds its lease, applies the
-     * transition and writes it back. This is the one place that rule is stated.
+     * Loads a job exclusively, refuses unless the caller still holds its lease (whatever
+     * {@code holdsLease} says that means for the caller), applies the transition and writes it
+     * back. This is the one place that rule is applied.
      */
-    private Optional<Job> transitionLeased(UUID id, String workerId, UnaryOperator<Job> transition) {
-        Objects.requireNonNull(workerId, "workerId");
+    private Optional<Job> transitionLeased(
+            UUID id, Predicate<Job> holdsLease, UnaryOperator<Job> transition) {
         return rows.inExclusiveScope(scope -> {
             Optional<Job> existing = scope.byId(id);
-            // Refuse writes from a worker whose lease was reclaimed while it was still running.
-            if (existing.isEmpty() || !existing.get().leaseHeldBy(workerId)) {
+            // Refuse writes from a worker (or an earlier attempt) whose lease was reclaimed while
+            // it was still running.
+            if (existing.isEmpty() || !holdsLease.test(existing.get())) {
                 return Optional.<Job>empty();
             }
             Job updated = transition.apply(existing.get());

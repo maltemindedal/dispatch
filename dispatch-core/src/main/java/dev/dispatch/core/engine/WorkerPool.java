@@ -361,14 +361,14 @@ public final class WorkerPool implements AutoCloseable {
 
     private void recordSuccess(Job job) {
         try {
-            if (store.complete(job.id(), config.workerId(), clock.instant()).isPresent()) {
+            if (store.complete(job.id(), config.workerId(), job.attempt(), clock.instant()).isPresent()) {
                 metrics.jobSucceeded();
                 log.debug("Job {} ({}) completed on attempt {}", job.id(), job.type(), job.attempt());
             } else {
                 metrics.leaseLost();
-                log.warn("Job {} finished but its lease was already gone. It ran longer than the "
-                        + "visibility timeout ({}) and another worker may have re-run it",
-                        job.id(), config.visibilityTimeout());
+                log.warn("Job {} finished attempt {} but its lease was already gone. It ran longer "
+                        + "than the visibility timeout ({}) and another attempt may have re-run it",
+                        job.id(), job.attempt(), config.visibilityTimeout());
             }
         } catch (RuntimeException e) {
             // The work happened; we just could not say so. The lease expires and the job is
@@ -398,13 +398,13 @@ public final class WorkerPool implements AutoCloseable {
             Instant now = clock.instant();
             Duration backoff = retryPolicy.backoffAfter(job.attempt());
             Instant retryAt = now.plus(backoff);
-            if (store.fail(job.id(), config.workerId(), error, retryAt, now).isPresent()) {
+            if (store.fail(job.id(), config.workerId(), job.attempt(), error, retryAt, now).isPresent()) {
                 metrics.retryScheduled();
                 log.debug("Job {} retry {} scheduled in {}", job.id(), job.attempt() + 1, backoff);
             } else {
                 metrics.leaseLost();
-                log.warn("Job {} failed but its lease was already gone; another worker owns it",
-                        job.id());
+                log.warn("Job {} failed on attempt {} but its lease was already gone; a later "
+                        + "attempt owns it", job.id(), job.attempt());
             }
         } catch (RuntimeException e) {
             log.error("Job {} failed and the failure could not be recorded", job.id(), e);
@@ -413,7 +413,7 @@ public final class WorkerPool implements AutoCloseable {
 
     private void recordDeadLetter(Job job, String error) {
         try {
-            if (store.deadLetter(job.id(), config.workerId(), error, clock.instant()).isPresent()) {
+            if (store.deadLetter(job.id(), config.workerId(), job.attempt(), error, clock.instant()).isPresent()) {
                 metrics.jobDeadLettered();
                 log.error("Job {} ({}) dead-lettered after {} attempt(s): {}",
                         job.id(), job.type(), job.attempt(), error);

@@ -297,7 +297,7 @@ public abstract class JobStoreContract {
             store.claim(WORKER, 1, LEASE, now());
             clock.advance(Duration.ofSeconds(2));
 
-            Optional<Job> completed = store.complete(job.id(), WORKER, now());
+            Optional<Job> completed = store.complete(job.id(), WORKER, 1, now());
 
             assertThat(completed).isPresent();
             assertThat(completed.get().state()).isEqualTo(JobState.COMPLETED);
@@ -312,10 +312,63 @@ public abstract class JobStoreContract {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
 
-            assertThat(store.complete(job.id(), OTHER_WORKER, now())).isEmpty();
-            assertThat(store.fail(job.id(), OTHER_WORKER, "nope", now(), now())).isEmpty();
-            assertThat(store.deadLetter(job.id(), OTHER_WORKER, "nope", now())).isEmpty();
+            assertThat(store.complete(job.id(), OTHER_WORKER, 1, now())).isEmpty();
+            assertThat(store.fail(job.id(), OTHER_WORKER, 1, "nope", now(), now())).isEmpty();
+            assertThat(store.deadLetter(job.id(), OTHER_WORKER, 1, "nope", now())).isEmpty();
             assertThat(reload(job).state()).isEqualTo(JobState.RUNNING);
+        }
+
+        @Test
+        @DisplayName("an earlier attempt of the same worker cannot record over the attempt that superseded it")
+        void rejectsAnEarlierAttemptOfTheSameWorker() {
+            Job job = insertDue();
+            store.claim(WORKER, 1, LEASE, now());
+            // Attempt 1 outruns its visibility timeout, is reclaimed, and the same worker claims
+            // the job again as attempt 2. Both attempts carry the same worker id.
+            clock.advance(LEASE.plusSeconds(1));
+            store.reclaimExpiredLeases(now(), 100);
+            Job second = store.claim(WORKER, 1, LEASE, now()).get(0);
+            assertThat(second.attempt()).isEqualTo(2);
+
+            assertThat(store.complete(job.id(), WORKER, 1, now())).isEmpty();
+            assertThat(store.fail(job.id(), WORKER, 1, "late", now(), now())).isEmpty();
+            assertThat(store.deadLetter(job.id(), WORKER, 1, "late", now())).isEmpty();
+            Job seen = reload(job);
+            assertThat(seen.state()).isEqualTo(JobState.RUNNING);
+            assertThat(seen.attempt()).isEqualTo(2);
+            assertThat(seen.lockedBy()).isEqualTo(WORKER);
+            assertThat(seen.lastError()).doesNotContain("late");
+
+            // The attempt that actually holds the lease still can.
+            assertThat(store.complete(job.id(), WORKER, 2, now())).isPresent();
+            assertThat(reload(job).state()).isEqualTo(JobState.COMPLETED);
+        }
+
+        @Test
+        @DisplayName("the attempt counts from 1 again after an operator revives a dead job")
+        void attemptRestartsAfterManualRetry() {
+            Job job = insertDue();
+            store.claim(WORKER, 1, LEASE, now());
+            store.deadLetter(job.id(), WORKER, 1, "gave up", now());
+            store.requeueDeadJob(job.id(), now());
+
+            Job revived = store.claim(WORKER, 1, LEASE, now()).get(0);
+
+            assertThat(revived.attempt()).isEqualTo(1);
+            assertThat(store.complete(job.id(), WORKER, 1, now())).isPresent();
+        }
+
+        @Test
+        @SuppressWarnings("deprecation")
+        @DisplayName("the deprecated worker-only forms still work while the lease is held")
+        void deprecatedFormsStillRecordForTheHolder() {
+            Job job = insertDue();
+            store.claim(WORKER, 1, LEASE, now());
+
+            assertThat(store.complete(job.id(), OTHER_WORKER, now())).isEmpty();
+            assertThat(store.fail(job.id(), OTHER_WORKER, "no", now(), now())).isEmpty();
+            assertThat(store.deadLetter(job.id(), OTHER_WORKER, "no", now())).isEmpty();
+            assertThat(store.complete(job.id(), WORKER, now())).isPresent();
         }
 
         @Test
@@ -325,7 +378,7 @@ public abstract class JobStoreContract {
             store.claim(WORKER, 1, LEASE, now());
             Instant retryAt = now().plus(Duration.ofSeconds(30));
 
-            Optional<Job> failed = store.fail(job.id(), WORKER, "boom", retryAt, now());
+            Optional<Job> failed = store.fail(job.id(), WORKER, 1, "boom", retryAt, now());
 
             assertThat(failed).isPresent();
             assertThat(failed.get().state()).isEqualTo(JobState.FAILED);
@@ -343,7 +396,7 @@ public abstract class JobStoreContract {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
 
-            Optional<Job> dead = store.deadLetter(job.id(), WORKER, "gave up", now());
+            Optional<Job> dead = store.deadLetter(job.id(), WORKER, 1, "gave up", now());
 
             assertThat(dead).isPresent();
             assertThat(dead.get().state()).isEqualTo(JobState.DEAD);
@@ -356,7 +409,7 @@ public abstract class JobStoreContract {
         void rejectsUnclaimedJob() {
             Job job = insertDue();
 
-            assertThat(store.complete(job.id(), WORKER, now())).isEmpty();
+            assertThat(store.complete(job.id(), WORKER, 1, now())).isEmpty();
             assertThat(reload(job).state()).isEqualTo(JobState.PENDING);
         }
     }
@@ -386,7 +439,7 @@ public abstract class JobStoreContract {
         void promotesJobsOutOfBackoff() {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
-            store.fail(job.id(), WORKER, "boom", now().plus(Duration.ofSeconds(30)), now());
+            store.fail(job.id(), WORKER, 1, "boom", now().plus(Duration.ofSeconds(30)), now());
 
             assertThat(store.promoteDueJobs(now(), 100)).isZero();
 
@@ -437,7 +490,7 @@ public abstract class JobStoreContract {
             assertThat(dead.lastError()).contains(WORKER);
             // Nobody picks it up again, and the worker that lost it cannot resurrect it.
             assertThat(store.claim(OTHER_WORKER, 10, LEASE, now())).isEmpty();
-            assertThat(store.complete(job.id(), WORKER, now())).isEmpty();
+            assertThat(store.complete(job.id(), WORKER, 1, now())).isEmpty();
             assertThat(reload(job).state()).isEqualTo(JobState.DEAD);
             // It is an ordinary dead letter: an operator can revive it with a fresh budget.
             assertThat(store.requeueDeadJob(job.id(), now())).isInstanceOf(JobActionResult.Done.class);
@@ -476,7 +529,7 @@ public abstract class JobStoreContract {
             store.claim(OTHER_WORKER, 1, LEASE, now());
 
             // The expired worker finally finishes and tries to report success. The store must reject it.
-            assertThat(store.complete(job.id(), WORKER, now())).isEmpty();
+            assertThat(store.complete(job.id(), WORKER, 1, now())).isEmpty();
             assertThat(reload(job).lockedBy()).isEqualTo(OTHER_WORKER);
         }
 
@@ -583,7 +636,7 @@ public abstract class JobStoreContract {
         void requeueDeadJob() {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
-            store.deadLetter(job.id(), WORKER, "gave up", now());
+            store.deadLetter(job.id(), WORKER, 1, "gave up", now());
             clock.advance(Duration.ofMinutes(1));
 
             assertThat(store.requeueDeadJob(job.id(), now()))
