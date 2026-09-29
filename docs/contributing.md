@@ -73,7 +73,8 @@ These tests cover the main contracts and execution paths:
 and pull request to `main`: Temurin JDK 21, Gradle wrapper validation, and Testcontainers
 starting its own PostgreSQL on the runner's Docker daemon (no `services:` block). Test reports
 are uploaded as an artifact on failure. A newer push to the same branch or PR cancels the
-running build.
+running build. The actions are pinned to full commit SHAs (the release is in a comment beside
+each), so upgrading one is a deliberate edit.
 
 ## Module rules
 
