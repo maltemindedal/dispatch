@@ -102,8 +102,8 @@ docker compose up -d
 ```
 
 `docker compose` starts PostgreSQL 17 with database, user, and password all `dispatch` (see
-[docker-compose.yml](../docker-compose.yml)). The application again creates its own schema at
-startup. Everything from steps 2–4 works the same way with the same store class and SQL. The queue
+[docker-compose.yml](../docker-compose.yml)), published on `127.0.0.1` only because that password
+is public. The application again creates its own schema at startup. Everything from steps 2–4 works the same way with the same store class and SQL. The queue
 now survives restarts, and multiple app instances can share it.
 
 ## Where next
