@@ -1,5 +1,9 @@
 [versions]
 springBoot = "3.5.16"
+# Patch releases pinned above what the Boot 3.5.16 BOM manages; see dispatch-api/build.gradle.kts.
+tomcat = "10.1.60"
+jacksonBom = "2.21.7"
+log4j = "2.25.5"
 postgresql = "42.7.13"
 h2 = "2.4.240"
 hikari = "7.0.2"
@@ -11,6 +15,9 @@ assertj = "3.27.6"
 testcontainers = "1.21.4"
 
 [libraries]
+jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jacksonBom" }
+log4j-bom = { module = "org.apache.logging.log4j:log4j-bom", version.ref = "log4j" }
+
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
