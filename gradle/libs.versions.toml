@@ -2,13 +2,13 @@
 springBoot = "4.1.1"
 # Patch releases pinned above what the Boot 4.1.1 BOM manages; see dispatch-api/build.gradle.kts.
 tomcat = "11.0.26"
-jacksonBom = "3.1.7"
+jacksonBom = "3.2.3"
 postgresql = "42.7.13"
 h2 = "2.5.250"
 # The pool the app ships (the Boot 4.1 BOM manages it); the store tests should run against it.
-hikari = "7.0.2"
+hikari = "7.1.0"
 slf4j = "2.0.19"
-logback = "1.5.38"
+logback = "1.6.3"
 junit = "6.1.3"
 awaitility = "4.3.0"
 assertj = "3.27.7"
