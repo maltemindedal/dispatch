@@ -36,4 +36,5 @@ document has a bug. Please report it.
 
 | Document | What it covers | For whom |
 | --- | --- | --- |
-| [Contributing](contributing.md) | Build and test commands, test-suite architecture, CI, module dependency rules. | Contributors. |
+| [Contributing](../CONTRIBUTING.md) | Build and test commands, test-suite architecture, CI, module dependency rules. | Contributors. |
+| [Security policy](../SECURITY.md) | Supported versions, how to report a vulnerability privately, what is in scope. | Anyone who finds a security problem. |

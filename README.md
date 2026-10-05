@@ -85,7 +85,8 @@ or JDBC.
 
 ## Contributing
 
-See [docs/contributing.md](docs/contributing.md) for the build, the test suite, and what CI runs.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the build, the test suite, and what CI runs. To report
+a vulnerability, follow [SECURITY.md](SECURITY.md) rather than opening a public issue.
 
 ## License
 
