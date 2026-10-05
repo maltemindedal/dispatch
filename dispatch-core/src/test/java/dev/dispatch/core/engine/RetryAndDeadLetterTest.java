@@ -171,8 +171,8 @@ class RetryAndDeadLetterTest {
     }
 
     @Test
-    @DisplayName("a dead job can be revived by hand and then succeeds")
-    void deadJobCanBeRevived() {
+    @DisplayName("a dead job can be manually retried and then succeeds")
+    void deadJobCanBeManuallyRetried() {
         AtomicInteger attempts = new AtomicInteger();
         // Fails while the downstream service is down...
         JobHandler broken = context -> {
@@ -187,20 +187,20 @@ class RetryAndDeadLetterTest {
                 assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.DEAD));
         assertThat(attempts).hasValue(2);
 
-        // ...the service comes back, and an operator requeues the job.
+        // ...the service comes back, and an operator retries the job by hand.
         registry.replace("recoverable", context -> { });
         assertThat(queue.retryDeadJob(job.id())).isInstanceOf(JobActionResult.Done.class);
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(store.find(job.id()).orElseThrow().state())
                         .isEqualTo(JobState.COMPLETED));
-        // The revived job got a full retry budget rather than one last chance.
+        // The retried job got a full retry budget rather than one last chance.
         assertThat(store.find(job.id()).orElseThrow().attempt()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("reviving an unknown job reports not found")
-    void revivingLiveJobIsRefused() {
+    @DisplayName("manually retrying an unknown job reports not found")
+    void manualRetryOfUnknownJobIsNotFound() {
         registry.register("noop", context -> { });
         startQueue(RetryPolicy.immediate());
 

@@ -100,8 +100,8 @@ class PostgresEndToEndTest {
     }
 
     @Test
-    @DisplayName("a failing job retries, dies, and can be revived through the API")
-    void failingJobDiesAndIsRevived() {
+    @DisplayName("a failing job retries, dies, and can be manually retried through the API")
+    void failingJobDiesAndIsManuallyRetried() {
         Map<String, Object> request = Map.of(
                 "type", TestHandlers.FAIL,
                 "payload", Map.of(),
@@ -117,10 +117,10 @@ class PostgresEndToEndTest {
             assertThat(current.lastError()).contains("deliberate test failure");
         });
 
-        ResponseEntity<JobResponse> revived =
+        ResponseEntity<JobResponse> retried =
                 rest.postForEntity("/jobs/" + job.id() + "/retry", null, JobResponse.class);
-        assertThat(revived.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(revived.getBody().attempt()).isZero();
+        assertThat(retried.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(retried.getBody().attempt()).isZero();
 
         // It fails again because the handler never recovers. The point is that the operator
         // action took effect against the shared database.

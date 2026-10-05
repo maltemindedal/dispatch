@@ -52,7 +52,10 @@ public enum JobState {
     /** An attempt failed and a retry is pending, once the backoff at {@code scheduledAt} elapses. */
     FAILED,
 
-    /** Retries exhausted (or manually killed). The dead-letter state; only a manual retry revives it. */
+    /**
+     * Retries exhausted, or failed permanently. The dead-letter state; only a manual retry
+     * leaves it.
+     */
     DEAD;
 
     private static final Map<JobState, Set<JobState>> ALLOWED;
@@ -67,7 +70,7 @@ public enum JobState {
         allowed.put(RUNNING, EnumSet.of(COMPLETED, FAILED, DEAD, PENDING));
         // Backoff elapsed (sweeper), or the retry budget was revoked.
         allowed.put(FAILED, EnumSet.of(PENDING, DEAD));
-        // Revived by an operator via POST /jobs/{id}/retry.
+        // A manual retry by an operator, via POST /jobs/{id}/retry.
         allowed.put(DEAD, EnumSet.of(PENDING));
         // Terminal, no way back. A re-run is a new job.
         allowed.put(COMPLETED, EnumSet.noneOf(JobState.class));
@@ -105,16 +108,16 @@ public enum JobState {
         return CANCELLABLE;
     }
 
-    /** The states a manual retry accepts: DEAD alone. The single source for revive refusals. */
-    public static Set<JobState> revivableStates() {
-        return REVIVABLE;
+    /** The states a manual retry accepts: DEAD alone. The single source for its refusals. */
+    public static Set<JobState> manuallyRetryableStates() {
+        return MANUALLY_RETRYABLE;
     }
 
     private static final Set<JobState> CANCELLABLE = Arrays.stream(values())
             .filter(JobState::isCancellable)
             .collect(Collectors.toUnmodifiableSet());
 
-    private static final Set<JobState> REVIVABLE = Set.of(DEAD);
+    private static final Set<JobState> MANUALLY_RETRYABLE = Set.of(DEAD);
 
     /** A mutable count map with every state present at zero, so absent states read as 0, not null. */
     public static Map<JobState, Long> zeroCounts() {

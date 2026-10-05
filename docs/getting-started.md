@@ -85,7 +85,7 @@ curl -s -X POST localhost:8080/jobs -H 'Content-Type: application/json' \
 ```
 
 The handler throws a permanent failure, so the job skips its remaining retries and immediately
-lands in `DEAD`, the dead-letter state. Only an operator can revive it:
+lands in `DEAD`, the dead-letter state. Only an operator's manual retry gets it out:
 
 ```bash
 curl -s 'localhost:8080/jobs?status=DEAD' | jq '.[].id'

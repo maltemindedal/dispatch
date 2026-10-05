@@ -38,13 +38,18 @@ jobs whose **Lease** expired.
 _Avoid_: reaper (a reaper deletes finished jobs, and there is none)
 
 **Dead letter**:
-A job in the DEAD state because it exhausted its retry budget or failed permanently. Only an
-explicit manual retry revives it.
+A job in the DEAD state because it exhausted its retry budget or failed permanently. Only a
+**Manual retry** takes it out of that state.
 _Avoid_: dead-letter queue (DEAD is a job state, not a separate queue)
 
+**Manual retry**:
+An operator sending a **Dead letter** back to PENDING with a fresh retry budget.
+_Avoid_: revive, requeue (requeue also describes a reclaimed or interrupted job going back to
+PENDING)
+
 **Refusal**:
-The engine declining an operator action, such as a cancel or a manual retry, with the reason and
-the job state it observed when it decided.
+The engine declining an operator action, such as a cancel or a **Manual retry**, with the reason
+and the job state it observed when it decided.
 
 ### Storage
 
@@ -64,4 +69,5 @@ means lives above it.
 - A **Claim** gives each job it takes a **Lease**; a **Sweep** reclaims the jobs whose **Lease**
   expired
 - **Claims** and **Sweeps** find their jobs through a **Selection**, applied over the **Rows**
-- A manual retry of a **Dead letter** either revives it or comes back as a **Refusal**
+- A **Manual retry** of a **Dead letter** either returns it to PENDING or comes back as a
+  **Refusal**
