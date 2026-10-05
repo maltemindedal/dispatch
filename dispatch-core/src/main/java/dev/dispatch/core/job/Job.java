@@ -143,7 +143,7 @@ public record Job(
                 Objects.requireNonNull(retryAt, "retryAt"), createdAt, now, null, null, error);
     }
 
-    /** -> DEAD: the dead-letter transition, valid from every non-terminal state. */
+    /** RUNNING -> DEAD: releases the lease and dead-letters the job. */
     public Job deadLettered(String error, Instant now) {
         state.requireTransitionTo(JobState.DEAD);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.DEAD,

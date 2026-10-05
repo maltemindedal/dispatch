@@ -16,17 +16,23 @@ class JobStateTest {
     @Test
     @DisplayName("the full transition table is exactly what the lifecycle documents")
     void transitionTable() {
-        assertThat(JobState.PENDING.allowedTransitions())
-                .containsExactlyInAnyOrder(JobState.RUNNING, JobState.DEAD);
-        assertThat(JobState.SCHEDULED.allowedTransitions())
-                .containsExactlyInAnyOrder(JobState.PENDING, JobState.DEAD);
+        assertThat(JobState.PENDING.allowedTransitions()).containsExactly(JobState.RUNNING);
+        assertThat(JobState.SCHEDULED.allowedTransitions()).containsExactly(JobState.PENDING);
         assertThat(JobState.RUNNING.allowedTransitions())
                 .containsExactlyInAnyOrder(JobState.COMPLETED, JobState.FAILED, JobState.DEAD,
                         JobState.PENDING);
-        assertThat(JobState.FAILED.allowedTransitions())
-                .containsExactlyInAnyOrder(JobState.PENDING, JobState.DEAD);
+        assertThat(JobState.FAILED.allowedTransitions()).containsExactly(JobState.PENDING);
         assertThat(JobState.DEAD.allowedTransitions()).containsExactly(JobState.PENDING);
         assertThat(JobState.COMPLETED.allowedTransitions()).isEmpty();
+    }
+
+    @ParameterizedTest
+    @EnumSource(JobState.class)
+    @DisplayName("only a RUNNING job can be dead-lettered; an unstarted one is cancelled instead")
+    void onlyRunningDeadLetters(JobState state) {
+        assertThat(state.canTransitionTo(JobState.DEAD))
+                .as("%s -> DEAD", state)
+                .isEqualTo(state == JobState.RUNNING);
     }
 
     @Test
