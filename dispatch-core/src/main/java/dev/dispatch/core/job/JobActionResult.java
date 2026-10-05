@@ -17,8 +17,8 @@ import java.util.UUID;
 public sealed interface JobActionResult {
 
     /**
-     * The action happened. For a revive this is the resulting snapshot; for a cancel it is the
-     * final snapshot of the row that was removed.
+     * The action happened. For a manual retry this is the resulting snapshot; for a cancel it is
+     * the final snapshot of the row that was removed.
      */
     record Done(Job job) implements JobActionResult {
         public Done {

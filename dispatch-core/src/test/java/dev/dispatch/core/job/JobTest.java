@@ -124,18 +124,18 @@ class JobTest {
     }
 
     @Test
-    @DisplayName("reviving a dead job hands back a full retry budget")
-    void reviveResetsAttempts() {
+    @DisplayName("a manual retry hands a dead job back a full retry budget")
+    void manualRetryResetsAttempts() {
         Job dead = pendingJob(3).claimedBy("w", NOW, LEASE).deadLettered("gave up", NOW);
         Instant later = NOW.plus(Duration.ofHours(1));
 
-        Job revived = dead.revivedForManualRetry(later);
+        Job retried = dead.manuallyRetried(later);
 
-        assertThat(revived.state()).isEqualTo(JobState.PENDING);
-        assertThat(revived.attempt()).isZero();
-        assertThat(revived.retriesRemaining()).isEqualTo(3);
-        assertThat(revived.scheduledAt()).isEqualTo(later);
-        assertThat(revived.createdAt()).isEqualTo(NOW);
+        assertThat(retried.state()).isEqualTo(JobState.PENDING);
+        assertThat(retried.attempt()).isZero();
+        assertThat(retried.retriesRemaining()).isEqualTo(3);
+        assertThat(retried.scheduledAt()).isEqualTo(later);
+        assertThat(retried.createdAt()).isEqualTo(NOW);
     }
 
     @Test

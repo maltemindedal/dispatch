@@ -189,10 +189,10 @@ public record Job(
     }
 
     /**
-     * DEAD -> PENDING, on operator request. The retry budget is reset so the revived job gets a
+     * DEAD -> PENDING, on operator request. The retry budget is reset so the retried job gets a
      * full set of attempts rather than dying again on the first stumble.
      */
-    public Job revivedForManualRetry(Instant now) {
+    public Job manuallyRetried(Instant now) {
         state.requireTransitionTo(JobState.PENDING);
         return new Job(id, type, payload, priority, maxRetries, 0, JobState.PENDING,
                 now, createdAt, now, null, null, lastError);

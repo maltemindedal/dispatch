@@ -343,7 +343,7 @@ class RestContractTest {
     }
 
     @Test
-    @DisplayName("POST /jobs/{id}/retry revives a dead job with a fresh budget")
+    @DisplayName("POST /jobs/{id}/retry manually retries a dead job with a fresh budget")
     void retryDeadJob() {
         Job dead = deadJob(2);
 
@@ -351,7 +351,7 @@ class RestContractTest {
 
         assertThat(r.status()).isEqualTo(200);
         assertThat(r.contentType()).isEqualTo(JSON);
-        // The revived job is due immediately, so its scheduledAt is "now"; its last error stays.
+        // The retried job is due immediately, so its scheduledAt is "now"; its last error stays.
         assertThat(r.normalized().replaceAll("\"scheduledAt\":\"[^\"]*\"", "\"scheduledAt\":\"<ts>\""))
                 .isEqualTo("{\"id\":\"<id>\",\"type\":\"send-email\","
                         + "\"payload\":{},\"priority\":0,\"maxRetries\":2,\"attempt\":0,"

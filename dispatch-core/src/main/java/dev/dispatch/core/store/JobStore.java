@@ -249,13 +249,13 @@ public final class JobStore implements AutoCloseable {
      * DEAD -> PENDING with a fresh retry budget. The decision and the transition happen in one
      * atomic step.
      *
-     * @return {@link JobActionResult.Done} with the revived snapshot, or why not
+     * @return {@link JobActionResult.Done} with the retried snapshot, or why not
      */
-    public JobActionResult requeueDeadJob(UUID id, Instant now) {
-        return decide(id, JobState.revivableStates(), (scope, job) -> {
-            Job revived = job.revivedForManualRetry(now);
-            scope.write(List.of(revived));
-            return revived;
+    public JobActionResult retryDeadJob(UUID id, Instant now) {
+        return decide(id, JobState.manuallyRetryableStates(), (scope, job) -> {
+            Job retried = job.manuallyRetried(now);
+            scope.write(List.of(retried));
+            return retried;
         });
     }
 

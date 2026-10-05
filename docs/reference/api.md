@@ -9,7 +9,7 @@ Base URL: `http://localhost:8080` by default. All bodies are JSON. Errors come b
 | `POST` | `/jobs` | Submit a job |
 | `GET` | `/jobs/{id}` | Fetch one job |
 | `GET` | `/jobs` | List jobs, newest first |
-| `POST` | `/jobs/{id}/retry` | Revive a dead-lettered job |
+| `POST` | `/jobs/{id}/retry` | Manually retry a dead-lettered job |
 | `DELETE` | `/jobs/{id}` | Cancel a job that has not started |
 | `GET` | `/stats` | Queue depth plus this instance's counters |
 
@@ -78,9 +78,9 @@ Out-of-range values are a `400`. Returns a JSON array of [jobs](#the-job-resourc
 
 ## POST /jobs/{id}/retry
 
-Requeues a dead-lettered job with a fresh retry budget.
+A manual retry: sends a dead-lettered job back to `PENDING` with a fresh retry budget.
 
-- `200 OK`: the revived job, back in `PENDING` with `attempt` reset.
+- `200 OK`: the retried job, back in `PENDING` with `attempt` reset.
 - `404 Not Found`: no such job.
 - `409 Conflict`: the job exists but is not `DEAD`.
 

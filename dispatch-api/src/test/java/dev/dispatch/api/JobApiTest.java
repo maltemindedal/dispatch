@@ -263,7 +263,7 @@ class JobApiTest {
     }
 
     @Test
-    @DisplayName("POST /jobs/{id}/retry revives a dead job with a fresh retry budget")
+    @DisplayName("POST /jobs/{id}/retry manually retries a dead job with a fresh retry budget")
     void retryDeadJob() throws Exception {
         Job job = deadJob(2);
         // It got there the honest way: one attempt plus two retries.

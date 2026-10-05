@@ -155,9 +155,9 @@ public final class JobQueue implements AutoCloseable {
      * state the store observed in the same atomic step.
      */
     public JobActionResult retryDeadJob(UUID id) {
-        JobActionResult result = store.requeueDeadJob(id, clock.instant());
+        JobActionResult result = store.retryDeadJob(id, clock.instant());
         if (result instanceof JobActionResult.Done done) {
-            log.info("Job {} revived from the dead-letter state", done.job().id());
+            log.info("Job {} manually retried out of the dead-letter state", done.job().id());
             workers.wakeUp();
         }
         return result;
