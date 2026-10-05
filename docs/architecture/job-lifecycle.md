@@ -22,10 +22,11 @@ stateDiagram-v2
     COMPLETED --> [*]
 ```
 
-The diagram shows the transitions the running system actually takes. `JobState` declares three
-more as legal, `PENDING → DEAD`, `SCHEDULED → DEAD`, and `FAILED → DEAD`, to leave room for an
-operational "kill" that no code path currently performs: today the only way into `DEAD` is from
-`RUNNING`, and removing an unstarted job is done by cancellation, which deletes the row.
+The diagram is the whole of `JobState`'s transition table: every arrow is a move the engine
+makes, and nothing else is legal. The only way into `DEAD` is from `RUNNING`, since only an
+attempt can exhaust the retry budget or fail permanently. An unstarted job is removed by
+cancellation, which deletes the row instead of moving it to any state. A future operator action
+that needs a new transition adds it to the table together with the code path that performs it.
 
 | State | Meaning |
 | --- | --- |

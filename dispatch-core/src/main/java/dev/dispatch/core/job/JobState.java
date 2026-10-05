@@ -12,28 +12,30 @@ import java.util.stream.Collectors;
  * Lifecycle of a job, with the legal transitions modelled explicitly.
  *
  * <pre>
- *   submit(now)      ┌──────────────┐  claim   ┌─────────┐  success   ┌───────────┐
- *   ────────────────▶│   PENDING    │─────────▶│ RUNNING │───────────▶│ COMPLETED │
- *                    └──────────────┘          └─────────┘            └───────────┘
- *                      ▲     ▲   ▲                 │  │
- *   submit(future)     │     │   │ visibility      │  │ failure, retries left
- *   ┌───────────┐ due  │     │   │ timeout         │  ▼
- *   │ SCHEDULED │──────┘     │   └─────────────────┤ ┌────────┐  backoff elapsed
- *   └───────────┘            │                     │ │ FAILED │────────────────────┐
- *                            │                     │ └────────┘                    │
- *                            │                     │  │                            │
- *                            │  manual retry       │  │ failure, retries exhausted │
- *                            │  ┌──────┐           │  ▼                            │
- *                            └──│ DEAD │◀──────────┴─────                          │
- *                               └──────┘                                           │
- *                            ▲                                                     │
- *                            └─────────────────────────────────────────────────────┘
+ *  submit(now)     ┌─────────┐       claim        ┌─────────┐   success   ┌───────────┐
+ * ────────────────▶│ PENDING │───────────────────▶│ RUNNING │────────────▶│ COMPLETED │
+ *                  └─────────┘                    └─────────┘             └───────────┘
+ *                    ▲ ▲ ▲ ▲                        │  │  │
+ * submit(future)     │ │ │ │ visibility timeout     │  │  │ failure, retries left
+ * ┌───────────┐  due │ │ │ └────────────────────────┘  │  ▼
+ * │ SCHEDULED │──────┘ │ │                             │ ┌────────┐
+ * └───────────┘        │ │  failure, retries exhausted │ │ FAILED │
+ *                      │ │                ┌──────┐     │ └─────┬──┘
+ *                      │ └────────────────│ DEAD │◀────┘       │
+ *                      │   manual retry   └──────┘             │
+ *                      │                      backoff elapsed  │
+ *                      └───────────────────────────────────────┘
  * </pre>
  *
  * <p>The distinction worth internalising: {@link #SCHEDULED} means "delayed, never attempted",
  * {@link #FAILED} means "attempted, waiting out a backoff before the next attempt", and
  * {@link #DEAD} means "gave up" (the dead-letter state). Both SCHEDULED and FAILED carry a
  * {@code scheduledAt} in the future; a sweeper promotes them to PENDING once that time passes.
+ *
+ * <p>The diagram is the whole transition table: nothing else is legal. The only way into DEAD is
+ * from RUNNING, since only an attempt can exhaust the retry budget or fail permanently. A job
+ * that has not started is removed by cancelling it, which deletes the row rather than moving it
+ * to any state.
  */
 public enum JobState {
 
@@ -52,21 +54,27 @@ public enum JobState {
     /** An attempt failed and a retry is pending, once the backoff at {@code scheduledAt} elapses. */
     FAILED,
 
-    /** Retries exhausted (or manually killed). The dead-letter state; only a manual retry revives it. */
+    /**
+     * Retries exhausted, or failed permanently. The dead-letter state; only a manual retry
+     * revives it.
+     */
     DEAD;
 
     private static final Map<JobState, Set<JobState>> ALLOWED;
 
     static {
+        // Only the moves the engine makes. A transition with no caller is a bug the check would
+        // let through, so add one here together with the code path that needs it.
         Map<JobState, Set<JobState>> allowed = new EnumMap<>(JobState.class);
-        // Claimed by a worker.
-        allowed.put(PENDING, EnumSet.of(RUNNING, DEAD));
-        // Its delay elapsed (sweeper), or it was cancelled outright.
-        allowed.put(SCHEDULED, EnumSet.of(PENDING, DEAD));
-        // Succeeded / failed with retries left / failed for good / visibility lease expired.
+        // Claimed by a worker. Cancelling deletes the row; it is not a transition.
+        allowed.put(PENDING, EnumSet.of(RUNNING));
+        // Its delay elapsed (sweeper). Cancelling deletes the row, as for PENDING.
+        allowed.put(SCHEDULED, EnumSet.of(PENDING));
+        // Succeeded / failed with retries left / failed for good, or lost its lease on the last
+        // permitted attempt / lost its lease with a retry left.
         allowed.put(RUNNING, EnumSet.of(COMPLETED, FAILED, DEAD, PENDING));
-        // Backoff elapsed (sweeper), or the retry budget was revoked.
-        allowed.put(FAILED, EnumSet.of(PENDING, DEAD));
+        // Backoff elapsed (sweeper). It had a retry left when it failed, so it never dead-letters.
+        allowed.put(FAILED, EnumSet.of(PENDING));
         // Revived by an operator via POST /jobs/{id}/retry.
         allowed.put(DEAD, EnumSet.of(PENDING));
         // Terminal, no way back. A re-run is a new job.

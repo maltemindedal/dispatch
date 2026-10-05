@@ -154,6 +154,24 @@ class JobTest {
     }
 
     @Test
+    @DisplayName("only a running job can be dead-lettered")
+    void deadLetteringRequiresRunning() {
+        Job pending = pendingJob(3);
+        Job scheduled = Job.newJob(UUID.randomUUID(),
+                new JobSubmission("send-email", "{}", 0, 3, NOW.plus(Duration.ofHours(1))), NOW);
+        Job failed = pending.claimedBy("w", NOW, LEASE)
+                .failedWithRetryAt(NOW.plus(Duration.ofMinutes(1)), "x", NOW);
+
+        for (Job job : new Job[] {pending, scheduled, failed}) {
+            assertThatThrownBy(() -> job.deadLettered("gave up", NOW))
+                    .as("%s -> DEAD", job.state())
+                    .isInstanceOf(IllegalJobTransitionException.class);
+        }
+        assertThat(pending.claimedBy("w", NOW, LEASE).deadLettered("gave up", NOW).state())
+                .isEqualTo(JobState.DEAD);
+    }
+
+    @Test
     @DisplayName("a future scheduledAt starts the job SCHEDULED rather than PENDING")
     void futureSubmissionIsScheduled() {
         Instant runAt = NOW.plus(Duration.ofHours(2));
