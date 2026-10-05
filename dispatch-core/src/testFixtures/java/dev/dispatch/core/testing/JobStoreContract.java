@@ -345,16 +345,16 @@ public abstract class JobStoreContract {
         }
 
         @Test
-        @DisplayName("the attempt counts from 1 again after an operator revives a dead job")
+        @DisplayName("the attempt counts from 1 again after a manual retry of a dead job")
         void attemptRestartsAfterManualRetry() {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
             store.deadLetter(job.id(), WORKER, 1, "gave up", now());
-            store.requeueDeadJob(job.id(), now());
+            store.retryDeadJob(job.id(), now());
 
-            Job revived = store.claim(WORKER, 1, LEASE, now()).get(0);
+            Job retried = store.claim(WORKER, 1, LEASE, now()).get(0);
 
-            assertThat(revived.attempt()).isEqualTo(1);
+            assertThat(retried.attempt()).isEqualTo(1);
             assertThat(store.complete(job.id(), WORKER, 1, now())).isPresent();
         }
 
@@ -492,8 +492,8 @@ public abstract class JobStoreContract {
             assertThat(store.claim(OTHER_WORKER, 10, LEASE, now())).isEmpty();
             assertThat(store.complete(job.id(), WORKER, 1, now())).isEmpty();
             assertThat(reload(job).state()).isEqualTo(JobState.DEAD);
-            // It is an ordinary dead letter: an operator can revive it with a fresh budget.
-            assertThat(store.requeueDeadJob(job.id(), now())).isInstanceOf(JobActionResult.Done.class);
+            // It is an ordinary dead letter: a manual retry gives it a fresh budget.
+            assertThat(store.retryDeadJob(job.id(), now())).isInstanceOf(JobActionResult.Done.class);
             assertThat(reload(job).state()).isEqualTo(JobState.PENDING);
             assertThat(reload(job).attempt()).isZero();
         }
@@ -632,14 +632,14 @@ public abstract class JobStoreContract {
         }
 
         @Test
-        @DisplayName("a dead job can be revived, with a fresh retry budget")
-        void requeueDeadJob() {
+        @DisplayName("a dead job can be manually retried, with a fresh retry budget")
+        void retryDeadJob() {
             Job job = insertDue();
             store.claim(WORKER, 1, LEASE, now());
             store.deadLetter(job.id(), WORKER, 1, "gave up", now());
             clock.advance(Duration.ofMinutes(1));
 
-            assertThat(store.requeueDeadJob(job.id(), now()))
+            assertThat(store.retryDeadJob(job.id(), now()))
                     .isInstanceOfSatisfying(JobActionResult.Done.class, done -> {
                         assertThat(done.job().state()).isEqualTo(JobState.PENDING);
                         assertThat(done.job().attempt()).isZero();
@@ -663,16 +663,16 @@ public abstract class JobStoreContract {
         }
 
         @Test
-        @DisplayName("only DEAD jobs can be revived, and the refusal says why")
-        void requeueRefusesLiveJob() {
+        @DisplayName("only DEAD jobs can be manually retried, and the refusal says why")
+        void retryRefusesLiveJob() {
             Job job = insertDue();
 
-            assertThat(store.requeueDeadJob(job.id(), now()))
+            assertThat(store.retryDeadJob(job.id(), now()))
                     .isInstanceOfSatisfying(JobActionResult.WrongState.class, refusal -> {
                         assertThat(refusal.observed().state()).isEqualTo(JobState.PENDING);
                         assertThat(refusal.allowedStates()).containsExactly(JobState.DEAD);
                     });
-            assertThat(store.requeueDeadJob(UUID.randomUUID(), now()))
+            assertThat(store.retryDeadJob(UUID.randomUUID(), now()))
                     .isInstanceOf(JobActionResult.NotFound.class);
         }
     }

@@ -40,7 +40,7 @@ class JobStateTest {
     }
 
     @Test
-    @DisplayName("DEAD is escapable only by an operator requeue")
+    @DisplayName("DEAD is escapable only by an operator's manual retry")
     void deadOnlyReturnsToPending() {
         assertThat(JobState.DEAD.canTransitionTo(JobState.PENDING)).isTrue();
         assertThat(JobState.DEAD.canTransitionTo(JobState.RUNNING)).isFalse();

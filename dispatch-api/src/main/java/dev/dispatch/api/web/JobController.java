@@ -90,9 +90,9 @@ public class JobController {
     }
 
     /**
-     * Requeues a dead-lettered job with a fresh retry budget.
+     * Manually retries a dead-lettered job, with a fresh retry budget.
      *
-     * @return 200 with the revived job, 404 if it does not exist, 409 if it is not DEAD
+     * @return 200 with the retried job, 404 if it does not exist, 409 if it is not DEAD
      */
     @PostMapping("/{id}/retry")
     public JobResponse retry(@PathVariable UUID id) {
