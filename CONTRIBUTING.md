@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **A JDK.** The build declares a Java 21 toolchain; the foojay resolver plugin (see
-  [`settings.gradle.kts`](../settings.gradle.kts)) downloads one automatically if needed.
+  [`settings.gradle.kts`](settings.gradle.kts)) downloads one automatically if needed.
 - **Docker**, for the Testcontainers-based integration tests in `dispatch-postgres` and
   `dispatch-api`. The `dispatch-core` tests need no Docker at all.
 
@@ -22,7 +22,7 @@ avoids flaky timing.
 
 ## Dependency updates
 
-[`.github/dependabot.yml`](../.github/dependabot.yml) proposes updates weekly for the GitHub
+[`.github/dependabot.yml`](.github/dependabot.yml) proposes updates weekly for the GitHub
 Actions (which are pinned to commit SHAs), the Gradle wrapper and version catalog, and the
 PostgreSQL image in `docker-compose.yml`, each a week after release. Two things it cannot do for
 you: the PostgreSQL image name is also written in two test files (`PostgresTestSupport` and
@@ -32,7 +32,7 @@ you: the PostgreSQL image name is also written in two test files (`PostgresTestS
 ## Upgrading Gradle
 
 The wrapper pins the checksum of the Gradle distribution (`distributionSha256Sum` in
-[`gradle/wrapper/gradle-wrapper.properties`](../gradle/wrapper/gradle-wrapper.properties)), so a
+[`gradle/wrapper/gradle-wrapper.properties`](gradle/wrapper/gradle-wrapper.properties)), so a
 download that does not match fails instead of running. That means the pin has to move with the
 version. Take the checksum from <https://gradle.org/release-checksums/> and pass it:
 
@@ -72,7 +72,7 @@ These tests cover the main contracts and execution paths:
   actual elapsed time is the behaviour under test.
 - **`JobSchemaTest`** (`dispatch-postgres`): races twelve threads through schema creation ten
   times over: the regression test for the
-  [concurrent-bootstrap race](architecture/reliability.md#schema-creation-is-a-race).
+  [concurrent-bootstrap race](docs/architecture/reliability.md#schema-creation-is-a-race).
 - **`JobApiTest`** / **`PostgresEndToEndTest`** (`dispatch-api`): test the HTTP endpoints against the
   in-memory store, and the full stack against containerised PostgreSQL.
 - **`RestContractTest`** / **`StatsContractTest`** (`dispatch-api`): pin the wire contract byte for
@@ -84,7 +84,7 @@ These tests cover the main contracts and execution paths:
 
 ## CI
 
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs `./gradlew build` on every push
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `./gradlew build` on every push
 and pull request to `main`: Temurin JDK 21, Gradle wrapper validation, and Testcontainers
 starting its own PostgreSQL on the runner's Docker daemon (no `services:` block). Test reports
 are uploaded as an artifact on failure. A newer push to the same branch or PR cancels the
