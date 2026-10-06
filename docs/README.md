@@ -37,4 +37,5 @@ document has a bug. Please report it.
 | Document | What it covers | For whom |
 | --- | --- | --- |
 | [Contributing](../CONTRIBUTING.md) | Build and test commands, test-suite architecture, CI, module dependency rules. | Contributors. |
+| [Code of conduct](../CODE_OF_CONDUCT.md) | Expected behaviour in the project's spaces and how to report a violation. | Everyone taking part. |
 | [Security policy](../SECURITY.md) | Supported versions, how to report a vulnerability privately, what is in scope. | Anyone who finds a security problem. |

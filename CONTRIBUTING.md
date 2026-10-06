@@ -1,5 +1,8 @@
 # Contributing
 
+Everyone taking part in this project is expected to follow the
+[code of conduct](CODE_OF_CONDUCT.md).
+
 ## Prerequisites
 
 - **A JDK.** The build declares a Java 21 toolchain; the foojay resolver plugin (see

@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in dispatch or its documentation does not work as described.
+labels: [bug]
+body:
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: dispatch has no releases yet, so give the commit you tested against.
+    validations:
+      required: true
+  - type: input
+    id: affected
+    attributes:
+      label: What is affected
+      description: The module, endpoint, configuration key, class, or document, if you know it.
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Profile
+      options:
+        - dev (H2, the default)
+        - postgres
+        - Neither (tests, or the engine used directly)
+    validations:
+      required: true
+  - type: textarea
+    id: how-run
+    attributes:
+      label: How you ran it
+      description: The command, and any `dispatch.*` settings or environment variables you changed.
+      placeholder: "./gradlew :dispatch-api:bootRun --args='--spring.profiles.active=postgres'"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, JDK version, and PostgreSQL version if you used the `postgres` profile.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Ideally a request sequence or a failing test.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or output
+      description: Application log lines, the HTTP response, or the failing test's output.
+      render: text
