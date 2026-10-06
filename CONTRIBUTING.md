@@ -27,10 +27,10 @@ avoids flaky timing.
 
 [`.github/dependabot.yml`](.github/dependabot.yml) proposes updates weekly for the GitHub
 Actions (which are pinned to commit SHAs), the Gradle wrapper and version catalog, and the
-PostgreSQL image in `docker-compose.yml`, each a week after release. Two things it cannot do for
-you: the PostgreSQL image name is also written in two test files (`PostgresTestSupport` and
-`PostgresEndToEndTest`) and has to move with the compose file, and framework major versions
-(Spring Boot) are ignored on purpose because they are migrations.
+PostgreSQL image in `docker-compose.yml`. Two things it cannot do for you: the PostgreSQL image
+name is also written in two test files (`PostgresTestSupport` and `PostgresEndToEndTest`) and has
+to move with the compose file, and framework major versions (Spring Boot) are ignored on purpose
+because they are migrations.
 
 ## Upgrading Gradle
 
