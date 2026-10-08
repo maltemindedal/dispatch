@@ -138,10 +138,9 @@ final class AttemptRunner {
 
         try {
             Instant now = clock.instant();
-            // The store decides whether a retry is left, on the row it holds. So the backoff is
-            // computed on the last attempt too, where the store dead-letters the job and ignores it.
-            Duration backoff = retryPolicy.backoffAfter(job.attempt());
-            Optional<Job> recorded = store.fail(job.lease(), error, now.plus(backoff), now);
+            // The store decides whether a retry is left, on the row it holds, and asks the policy
+            // for a backoff only when one is.
+            Optional<Job> recorded = store.fail(job.lease(), error, retryPolicy, now);
             if (recorded.isEmpty()) {
                 metrics.leaseLost();
                 log.warn("Job {} failed on attempt {} but its lease was already gone; the failure "
@@ -150,7 +149,8 @@ final class AttemptRunner {
                 deadLettered(job, error);
             } else {
                 metrics.retryScheduled();
-                log.debug("Job {} retry {} scheduled in {}", job.id(), job.attempt() + 1, backoff);
+                log.debug("Job {} retry {} scheduled in {}", job.id(), job.attempt() + 1,
+                        Duration.between(now, recorded.get().scheduledAt()));
             }
         } catch (RuntimeException e) {
             log.error("Job {} failed and the failure could not be recorded", job.id(), e);

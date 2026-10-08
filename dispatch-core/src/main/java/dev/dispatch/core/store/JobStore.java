@@ -5,6 +5,7 @@ import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.job.Lease;
+import dev.dispatch.core.retry.RetryPolicy;
 import dev.dispatch.core.store.memory.InMemoryJobRows;
 import java.time.Duration;
 import java.time.Instant;
@@ -152,14 +153,15 @@ public final class JobStore implements AutoCloseable {
     }
 
     /**
-     * RUNNING -> FAILED, parked until {@code retryAt}, or DEAD if this was the last permitted
-     * attempt ({@link Job#attemptFailed}). The budget is checked on the row held under the lease,
-     * in the same step as the write. Empty if the lease was lost, as for {@link #complete}.
+     * RUNNING -> FAILED, parked until the backoff {@code retryPolicy} gives has passed, or DEAD if
+     * this was the last permitted attempt ({@link Job#attemptFailed}). The budget is checked on the
+     * row held under the lease, in the same step as the write, and the policy is asked only when a
+     * retry is left. Empty if the lease was lost, as for {@link #complete}.
      *
      * @return the job as written, so the caller can tell a scheduled retry from a dead letter
      */
-    public Optional<Job> fail(Lease lease, String error, Instant retryAt, Instant now) {
-        return transitionLeased(lease, job -> job.attemptFailed(error, retryAt, now));
+    public Optional<Job> fail(Lease lease, String error, RetryPolicy retryPolicy, Instant now) {
+        return transitionLeased(lease, job -> job.attemptFailed(error, retryPolicy, now));
     }
 
     /** RUNNING -> DEAD. Empty if the lease was lost, as for {@link #complete}. */

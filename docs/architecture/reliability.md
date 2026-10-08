@@ -78,7 +78,9 @@ run twice; too long and crash recovery crawls.
 On failure the attempt counter has already been incremented (that happened at claim time), so the
 only decision left is whether any budget remains. If yes: `FAILED`, with `scheduled_at` set to
 `now + backoff`. If no: `DEAD`. `JobStore.fail` makes that decision on the row it holds under the
-lease, in the same step as the write. The rule lives in `Job.attemptFailed`, next to
+lease, in the same step as the write, and asks the retry policy for a backoff only when a retry is
+left, so a policy never has to answer for the attempt after the last. The rule lives in
+`Job.attemptFailed`, next to
 `Job.reclaimed`, which makes the same decision for an expired lease. A handler can also throw
 `PermanentJobFailureException` to skip the budget entirely. A malformed payload does not get better
 on the fourth attempt.

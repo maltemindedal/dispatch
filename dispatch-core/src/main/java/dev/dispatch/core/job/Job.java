@@ -1,5 +1,6 @@
 package dev.dispatch.core.job;
 
+import dev.dispatch.core.retry.RetryPolicy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
@@ -206,20 +207,24 @@ public record Job(
     }
 
     /**
-     * What the store does with a RUNNING job whose attempt failed: FAILED until {@code retryAt},
-     * unless that attempt was the last one the retry budget allowed, in which case the job is
-     * dead-lettered and {@code retryAt} goes unused. Either way {@code error} becomes the last
-     * error.
+     * What the store does with a RUNNING job whose attempt failed: FAILED until the backoff
+     * {@code retryPolicy} gives for this attempt has passed, unless that attempt was the last one
+     * the retry budget allowed, in which case the job is dead-lettered. Either way {@code error}
+     * becomes the last error.
+     *
+     * <p>The policy is asked only when a retry is left. On the last attempt there is no next one
+     * to wait for, so a policy that answers only for the retries a job has is never asked about
+     * the attempt after them.
      *
      * <p>This is the budget check for a failure the worker reports, as {@link #reclaimed} is for
      * an attempt whose worker never reported back. The store applies it to the row it holds under
      * the lease, so the decision and the write are one atomic step.
      */
-    public Job attemptFailed(String error, Instant retryAt, Instant now) {
+    public Job attemptFailed(String error, RetryPolicy retryPolicy, Instant now) {
         if (retriesExhausted()) {
             return deadLettered(error, now);
         }
-        return failedWithRetryAt(retryAt, error, now);
+        return failedWithRetryAt(now.plus(retryPolicy.backoffAfter(attempt)), error, now);
     }
 
     /** SCHEDULED/FAILED -> PENDING: the delay or backoff elapsed and the job is claimable again. */

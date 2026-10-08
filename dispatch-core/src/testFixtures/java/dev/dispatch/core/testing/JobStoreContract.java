@@ -7,6 +7,7 @@ import dev.dispatch.core.job.JobActionResult;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.job.Lease;
+import dev.dispatch.core.retry.RetryPolicy;
 import dev.dispatch.core.store.JobFilter;
 import dev.dispatch.core.store.JobStore;
 import java.time.Duration;
@@ -316,7 +317,7 @@ public abstract class JobStoreContract {
             Lease foreign = new Lease(job.id(), OTHER_WORKER, 1, held.leaseId());
 
             assertThat(store.complete(foreign, now())).isEmpty();
-            assertThat(store.fail(foreign, "nope", now(), now())).isEmpty();
+            assertThat(store.fail(foreign, "nope", RetryPolicy.immediate(), now())).isEmpty();
             assertThat(store.deadLetter(foreign, "nope", now())).isEmpty();
             assertThat(reload(job).state()).isEqualTo(JobState.RUNNING);
         }
@@ -334,7 +335,7 @@ public abstract class JobStoreContract {
             assertThat(second.attempt()).isEqualTo(2);
 
             assertThat(store.complete(first, now())).isEmpty();
-            assertThat(store.fail(first, "late", now(), now())).isEmpty();
+            assertThat(store.fail(first, "late", RetryPolicy.immediate(), now())).isEmpty();
             assertThat(store.deadLetter(first, "late", now())).isEmpty();
             Job seen = reload(job);
             assertThat(seen.state()).isEqualTo(JobState.RUNNING);
@@ -378,7 +379,7 @@ public abstract class JobStoreContract {
             assertThat(retried.lockedBy()).isEqualTo(stalled.workerId());
 
             assertThat(store.complete(stalled, now())).isEmpty();
-            assertThat(store.fail(stalled, "from the stalled attempt", now(), now())).isEmpty();
+            assertThat(store.fail(stalled, "from the stalled attempt", RetryPolicy.immediate(), now())).isEmpty();
             assertThat(store.deadLetter(stalled, "from the stalled attempt", now())).isEmpty();
             Job seen = reload(job);
             assertThat(seen.state()).isEqualTo(JobState.RUNNING);
@@ -397,7 +398,7 @@ public abstract class JobStoreContract {
             Lease lease = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
             Instant retryAt = now().plus(Duration.ofSeconds(30));
 
-            Optional<Job> failed = store.fail(lease, "boom", retryAt, now());
+            Optional<Job> failed = store.fail(lease, "boom", RetryPolicy.fixed(Duration.ofSeconds(30)), now());
 
             assertThat(failed).isPresent();
             assertThat(failed.get().state()).isEqualTo(JobState.FAILED);
@@ -416,15 +417,17 @@ public abstract class JobStoreContract {
             // spends the budget.
             Job job = store.insert(new JobSubmission("send-email", "{}", 0, 1, null), now());
             Lease first = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
-            assertThat(store.fail(first, "first", now(), now()).orElseThrow().state())
+            assertThat(store.fail(first, "first", RetryPolicy.immediate(), now()).orElseThrow().state())
                     .isEqualTo(JobState.FAILED);
             assertThat(store.promoteDueJobs(now(), 100)).isEqualTo(1);
             Lease last = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
             assertThat(last.attempt()).isEqualTo(2);
             clock.advance(Duration.ofSeconds(2));
-            Instant retryAt = now().plus(Duration.ofSeconds(30));
+            RetryPolicy neverAsked = attempt -> {
+                throw new AssertionError("no retry is left, so no backoff is asked for");
+            };
 
-            Optional<Job> dead = store.fail(last, "second", retryAt, now());
+            Optional<Job> dead = store.fail(last, "second", neverAsked, now());
 
             assertThat(dead).isPresent();
             assertThat(dead.get().state()).isEqualTo(JobState.DEAD);
@@ -434,7 +437,7 @@ public abstract class JobStoreContract {
             assertThat(dead.get().lockedUntil()).isNull();
             assertThat(dead.get().updatedAt()).isEqualTo(now());
             assertThat(reload(job)).isEqualTo(dead.get());
-            // Terminal: nothing promotes it, even once the unused backoff has passed.
+            // Terminal: nothing promotes it, however long the clock runs.
             clock.advance(Duration.ofSeconds(30));
             assertThat(store.promoteDueJobs(now(), 100)).isZero();
             assertThat(store.claim(WORKER, 10, LEASE, now())).isEmpty();
@@ -490,7 +493,7 @@ public abstract class JobStoreContract {
         void promotesJobsOutOfBackoff() {
             Job job = insertDue();
             Lease lease = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
-            store.fail(lease, "boom", now().plus(Duration.ofSeconds(30)), now());
+            store.fail(lease, "boom", RetryPolicy.fixed(Duration.ofSeconds(30)), now());
 
             assertThat(store.promoteDueJobs(now(), 100)).isZero();
 

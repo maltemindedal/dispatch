@@ -7,10 +7,9 @@ import java.time.Duration;
 public interface RetryPolicy {
 
     /**
-     * Asked after every failed attempt, the last permitted one included. The store decides whether
-     * a retry is left, and on the last attempt it dead-letters the job and ignores the answer. So a
-     * policy must answer for any attempt from 1 up, not only for attempts that will be retried; one
-     * that throws leaves the failure unrecorded until the lease expires.
+     * Asked only after an attempt that has a retry left. On the last permitted attempt the store
+     * dead-letters the job without asking, so a policy need not answer for an attempt past a job's
+     * retry budget.
      *
      * @param attempt the attempt that just failed, 1-based
      * @return how long to wait before the next attempt

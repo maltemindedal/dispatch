@@ -3,6 +3,7 @@ package dev.dispatch.core.job;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.dispatch.core.retry.RetryPolicy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -45,14 +46,14 @@ class JobTest {
         assertThat(firstAttempt.retriesExhausted()).isFalse();
 
         Job secondAttempt = firstAttempt
-                .attemptFailed("boom", NOW, NOW)
+                .attemptFailed("boom", RetryPolicy.immediate(), NOW)
                 .promotedToPending(NOW)
                 .claimedBy("w", UUID.randomUUID(), NOW, LEASE);
         assertThat(secondAttempt.attempt()).isEqualTo(2);
         assertThat(secondAttempt.retriesRemaining()).isEqualTo(1);
 
         Job thirdAttempt = secondAttempt
-                .attemptFailed("boom", NOW, NOW)
+                .attemptFailed("boom", RetryPolicy.immediate(), NOW)
                 .promotedToPending(NOW)
                 .claimedBy("w", UUID.randomUUID(), NOW, LEASE);
         assertThat(thirdAttempt.attempt()).isEqualTo(3);
@@ -68,7 +69,7 @@ class JobTest {
 
         assertThat(firstAttempt.attempt()).isEqualTo(1);
         assertThat(firstAttempt.retriesExhausted()).isTrue();
-        assertThat(firstAttempt.attemptFailed("boom", NOW, NOW).state()).isEqualTo(JobState.DEAD);
+        assertThat(firstAttempt.attemptFailed("boom", RetryPolicy.immediate(), NOW).state()).isEqualTo(JobState.DEAD);
     }
 
     @Test
@@ -87,7 +88,7 @@ class JobTest {
     void failStoresBackoffAndError() {
         Instant retryAt = NOW.plus(Duration.ofSeconds(30));
         Job failed = pendingJob(3).claimedBy("w", UUID.randomUUID(), NOW, LEASE)
-                .attemptFailed("SMTP timeout", retryAt, NOW);
+                .attemptFailed("SMTP timeout", RetryPolicy.fixed(Duration.ofSeconds(30)), NOW);
 
         assertThat(failed.state()).isEqualTo(JobState.FAILED);
         assertThat(failed.scheduledAt()).isEqualTo(retryAt);
@@ -98,24 +99,25 @@ class JobTest {
     }
 
     @Test
-    @DisplayName("a failed attempt that was the last permitted one dead-letters the job and leaves its backoff unused")
+    @DisplayName("a failed attempt that was the last permitted one dead-letters the job without asking for a backoff")
     void lastFailedAttemptDeadLetters() {
         // maxRetries=1 allows two attempts; the second is the last.
         Job lastAttempt = pendingJob(1).claimedBy("w", UUID.randomUUID(), NOW, LEASE)
-                .attemptFailed("first try", NOW, NOW)
+                .attemptFailed("first try", RetryPolicy.immediate(), NOW)
                 .promotedToPending(NOW)
                 .claimedBy("w", UUID.randomUUID(), NOW, LEASE);
         assertThat(lastAttempt.retriesExhausted()).isTrue();
         Instant later = NOW.plusSeconds(10);
-        Instant retryAt = later.plusSeconds(30);
+        RetryPolicy neverAsked = attempt -> {
+            throw new AssertionError("no retry is left, so no backoff is asked for");
+        };
 
-        Job dead = lastAttempt.attemptFailed("SMTP timeout", retryAt, later);
+        Job dead = lastAttempt.attemptFailed("SMTP timeout", neverAsked, later);
 
         assertThat(dead).isEqualTo(lastAttempt.deadLettered("SMTP timeout", later));
         assertThat(dead.state()).isEqualTo(JobState.DEAD);
         assertThat(dead.attempt()).isEqualTo(2);
         assertThat(dead.lastError()).isEqualTo("SMTP timeout");
-        assertThat(dead.scheduledAt()).isNotEqualTo(retryAt);
         assertThat(dead.lockedBy()).isNull();
         assertThat(dead.lockedUntil()).isNull();
     }
@@ -163,7 +165,7 @@ class JobTest {
         assertThat(running.leaseId()).isNotNull();
 
         assertThat(running.completed(NOW).leaseId()).isNull();
-        assertThat(running.attemptFailed("boom", NOW, NOW).leaseId()).isNull();
+        assertThat(running.attemptFailed("boom", RetryPolicy.immediate(), NOW).leaseId()).isNull();
         assertThat(running.deadLettered("gave up", NOW).leaseId()).isNull();
         assertThat(running.leaseExpired(NOW).leaseId()).isNull();
         assertThat(running.reclaimed(NOW).leaseId()).isNull();
@@ -193,7 +195,7 @@ class JobTest {
 
         assertThatThrownBy(() -> pending.completed(NOW))
                 .isInstanceOf(IllegalJobTransitionException.class);
-        assertThatThrownBy(() -> pending.attemptFailed("x", NOW, NOW))
+        assertThatThrownBy(() -> pending.attemptFailed("x", RetryPolicy.immediate(), NOW))
                 .isInstanceOf(IllegalJobTransitionException.class);
 
         Job completed = pending.claimedBy("w", UUID.randomUUID(), NOW, LEASE).completed(NOW);
@@ -208,7 +210,7 @@ class JobTest {
         Job scheduled = Job.newJob(UUID.randomUUID(),
                 new JobSubmission("send-email", "{}", 0, 3, NOW.plus(Duration.ofHours(1))), NOW);
         Job failed = pending.claimedBy("w", UUID.randomUUID(), NOW, LEASE)
-                .attemptFailed("x", NOW.plus(Duration.ofMinutes(1)), NOW);
+                .attemptFailed("x", RetryPolicy.fixed(Duration.ofMinutes(1)), NOW);
 
         for (Job job : new Job[] {pending, scheduled, failed}) {
             assertThatThrownBy(() -> job.deadLettered("gave up", NOW))
