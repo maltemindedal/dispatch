@@ -30,8 +30,10 @@ java -jar $JAR --spring.profiles.active=postgres --server.port=8081 &
 ```
 
 Each instance generates its own worker id at startup (`worker-` plus a random suffix). That id is
-the lease key. If you set `dispatch.worker-id` explicitly, it must be unique per process, or
-instances can release each other's leases.
+what `locked_by` shows and what the logs name. If you set `dispatch.worker-id` explicitly, keep it
+unique per process, or no row or log line can tell you which instance holds a job. Every lease has
+its own id, so instances of this version cannot record over each other's leases even with a shared
+id, but an instance from before lease ids, still running during a rolling deploy, can.
 
 ## Feed them and watch the split
 

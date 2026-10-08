@@ -40,12 +40,24 @@ not available to a queue that talks to the outside world, and pretending otherwi
 bug somewhere harder to find.
 
 What the engine *does* guarantee is that a stalled worker cannot corrupt the record: every write
-of a result is conditional on still holding the lease *as the attempt that claimed it* (the row is
-`RUNNING`, `locked_by` is this worker, and `attempt` is the attempt number this worker was handed).
+of a result is conditional on still holding the lease *it was handed* (the row is `RUNNING`,
+`lease_id` is the id of that lease, `locked_by` is this worker, and `attempt` is the attempt number
+this worker was handed). Every lease gets a fresh id when a claim takes the job, so no two leases
+share one. The claim hands the worker that lease as a value, `Lease`, and `JobStore` records an
+outcome only in exchange for one, so no write can skip the check.
 A worker that overran its visibility timeout finds its update rejected, counts a lost lease
 (`leasesLost` in `/stats`), and gets out of the way of whoever took the job over. That includes
 itself: if the same instance reclaims and re-runs the job as attempt 2, attempt 1's late result is
 rejected too, rather than landing on attempt 2.
+
+The attempt number alone would not be enough. A manual retry resets it, so after a stalled last
+attempt is dead-lettered and an operator retries the job, the next claim can be the same worker's
+attempt 1 again. Only the lease id tells the two leases apart, and it is what stops the stalled
+attempt from completing the job, or dead-lettering it again, under the new claim. The worker and
+attempt checks stay as well, for rolling deploys: an instance that predates lease ids claims
+without writing `lease_id`, so a row it holds can still carry an earlier lease's id. For the same
+reason, while such an instance still runs, two instances that share a worker id can still record
+over each other's leases after a manual retry.
 
 ## Visibility timeout
 
@@ -67,8 +79,13 @@ run twice; too long and crash recovery crawls.
 
 On failure the attempt counter has already been incremented (that happened at claim time), so the
 only decision left is whether any budget remains. If yes: `FAILED`, with `scheduled_at` set to
-`now + backoff`. If no: `DEAD`. A handler can also throw `PermanentJobFailureException` to skip
-the budget entirely. A malformed payload does not get better on the fourth attempt.
+`now + backoff`. If no: `DEAD`. `JobStore.fail` makes that decision on the row it holds under the
+lease, in the same step as the write, and asks the retry policy for a backoff only when a retry is
+left, so a policy never has to answer for the attempt after the last. The rule lives in
+`Job.attemptFailed`, next to
+`Job.reclaimed`, which makes the same decision for an expired lease. A handler can also throw
+`PermanentJobFailureException` to skip the budget entirely. A malformed payload does not get better
+on the fourth attempt.
 
 Backoff is exponential with jitter:
 
@@ -114,9 +131,18 @@ exists".
 
 Two replicas rolling out simultaneously is the normal case, so `JobSchema` treats already-exists
 errors (a small set of SQL states, including that catalog-level unique violation) as success and
-then verifies the table is actually queryable. `JobSchemaTest` reproduces the race directly: ten
-rounds of twelve threads racing from an empty schema, which fails on the first round without that
-handling.
+then verifies the table has every column `JdbcJobRows` uses. `JobSchemaTest` reproduces the race
+directly: ten rounds of twelve threads racing from an empty schema, which fails on the first round
+without that handling.
+
+The script also carries one additive change, `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_id`,
+for tables created before the column existed. `ADD COLUMN` takes an ACCESS EXCLUSIVE lock before it
+checks `IF NOT EXISTS`, so `JobSchema` looks the column up in the catalog first, which locks
+nothing, and runs the statement only when the column is missing. A normal startup therefore never
+waits behind an open transaction on `jobs`, such as a backup. Two instances that both find the
+column missing are safe too: PostgreSQL checks again under the lock, so the second waits, then
+skips. `JobSchemaTest` covers both: twelve instances upgrading one table at once, and a restart
+with a one-second `lock_timeout` while a reader holds the table open.
 
 ## Ordering
 

@@ -40,7 +40,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   `dispatch-postgres`, behind the `JobRows` seam, by hand.
 - A new dependency needs its case in the PR body: it has to replace hand-rolled code (PR #7 turned
   down Error Prone on this bar). No broker, queue or scheduling library in any module, and no
-  Flyway until a second schema version exists.
+  Flyway before the next schema change (see the `jobs-schema.sql` gotcha).
 - `.github/dependabot.yml` has no `cooldown` blocks on purpose, so Dependabot's default delay
   applies. PR #15 removed a self-invented 7-day rule.
 
@@ -106,7 +106,13 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   - PostgreSQL image: `docker-compose.yml`, `PostgresTestSupport.java` and
     `PostgresEndToEndTest.java`. Dependabot bumps only the compose file.
 - `jobs-schema.sql` is applied idempotently at startup with no migration tool, so
-  `CREATE TABLE IF NOT EXISTS` never alters an existing table. `JobSchema.readStatements` drops
+  `CREATE TABLE IF NOT EXISTS` never alters an existing table. The script now carries one
+  additive, idempotent change for tables created before it,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_id UUID`, kept out of the `CREATE TABLE` so
+  every table gets the column from that one statement. `JobSchema` runs it only when the catalog
+  says the column is missing, since `ADD COLUMN` takes an ACCESS EXCLUSIVE lock before it checks
+  `IF NOT EXISTS`. The next schema change is the point to bring in a migration tool, not a second
+  `ALTER`. `JobSchema.readStatements` drops
   whole-line `--` comments and splits on `;`, so a `;` inside a string literal or a trailing
   comment cuts a statement in two.
 - H2 runs the same SQL with coarser locking: a contending reader gets an empty claim, not the next
@@ -120,7 +126,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   | Invariant | Guarded by |
   | --- | --- |
   | `JobRows.inExclusiveScope` is atomic across threads and processes; the JDBC scope rolls back on any `Throwable`, `Error` included | `JdbcScopeAtomicityTest` subclasses |
-  | Outcome writes are fenced by worker and attempt: call the `complete`, `fail` and `deadLetter` overloads that take the attempt | `StaleAttemptOutcomeTest` |
+  | Outcome writes are fenced by the lease id, worker and attempt: `complete`, `fail` and `deadLetter` take the `Lease` on the claimed snapshot (`job.lease()`), so there is no unfenced form. Every lease gets a fresh id, since a manual retry resets the attempt | `StaleAttemptOutcomeTest`, `ManualRetryStaleOutcomeTest` |
   | Claim permits are conserved: reserve before claiming, return unused ones at once and owed ones in `finally`; claim only what there is room to run, since a claimed job is invisible to peers until its lease expires | `ClaimCapacityTest`, `WorkerPoolShutdownTest` |
   | The interrupt flag is cleared while an outcome is recorded, since JDBC on an interrupted thread fails | `InterruptedOutcomeTest` |
   | The dispatcher and sweeper survive any `Throwable` from the store and back off one poll interval | `BackgroundErrorResilienceTest` |

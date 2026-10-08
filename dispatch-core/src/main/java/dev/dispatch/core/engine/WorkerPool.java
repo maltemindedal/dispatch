@@ -1,16 +1,11 @@
 package dev.dispatch.core.engine;
 
-import dev.dispatch.core.handler.JobContext;
-import dev.dispatch.core.handler.JobHandler;
 import dev.dispatch.core.handler.JobHandlerRegistry;
-import dev.dispatch.core.handler.PermanentJobFailureException;
-import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.retry.RetryPolicy;
 import dev.dispatch.core.store.JobStore;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
@@ -28,7 +23,9 @@ import org.slf4j.LoggerFactory;
  *
  * <h2>Shape</h2>
  * One <em>dispatcher</em> thread loops: reserve capacity, claim that many jobs, hand each to the
- * executor. Each job then runs on its own virtual thread.
+ * executor. Each job then runs on its own virtual thread, where an {@link AttemptRunner} runs its
+ * handler and records the outcome under the job's lease. Delivery is at-least-once, as
+ * {@link AttemptRunner} explains.
  *
  * <p>The split is deliberate. The dispatcher is a single long-lived platform thread. There is
  * exactly one, it lives for the life of the process, and it spends its time blocked in a database
@@ -43,19 +40,10 @@ import org.slf4j.LoggerFactory;
  * batch size, and hands unused permits straight back. So the engine never claims work it has no
  * room to run, which matters: a claimed job is invisible to every other instance until its lease
  * expires, and claiming greedily would park work on a busy node while idle nodes starve.
- *
- * <h2>Delivery semantics</h2>
- * At-least-once. A worker can finish a job and die before recording the result; the visibility
- * timeout then hands that job to someone else. Handlers must be idempotent. Recording a result is
- * always conditional on still holding the lease, so a worker that stalled past its timeout cannot
- * overwrite whoever took the job over. It counts a lost lease and moves on.
  */
 public final class WorkerPool implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(WorkerPool.class);
-
-    /** Errors are truncated before storage; stack traces belong in logs, not in a varchar. */
-    private static final int MAX_ERROR_LENGTH = 2000;
 
     private enum State {
         /** Built, nothing started. */
@@ -71,12 +59,11 @@ public final class WorkerPool implements AutoCloseable {
     }
 
     private final JobStore store;
-    private final JobHandlerRegistry registry;
-    private final RetryPolicy retryPolicy;
     private final QueueConfig config;
     private final QueueMetrics metrics;
     private final Clock clock;
     private final ClaimCapacity capacity;
+    private final AttemptRunner runner;
     private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
 
     private volatile ExecutorService executor;
@@ -91,12 +78,11 @@ public final class WorkerPool implements AutoCloseable {
             QueueMetrics metrics,
             Clock clock) {
         this.store = Objects.requireNonNull(store, "store");
-        this.registry = Objects.requireNonNull(registry, "registry");
-        this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
         this.config = Objects.requireNonNull(config, "config");
         this.metrics = Objects.requireNonNull(metrics, "metrics");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.capacity = new ClaimCapacity(config.concurrency());
+        this.runner = new AttemptRunner(store, registry, retryPolicy, config, metrics, clock);
     }
 
     /** Starts the dispatcher. Idempotent-ish: starting twice is a programming error and throws. */
@@ -250,7 +236,7 @@ public final class WorkerPool implements AutoCloseable {
                 try {
                     executor.execute(() -> {
                         try {
-                            runJob(job);
+                            runner.run(job);
                         } finally {
                             capacity.release(1);
                             finished.countDown();
@@ -319,120 +305,6 @@ public final class WorkerPool implements AutoCloseable {
         public boolean awaitCompletion(Duration timeout) throws InterruptedException {
             return finished.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
         }
-    }
-
-    // ---------------------------------------------------------------- execution
-
-    private void runJob(Job job) {
-        long startNanos = System.nanoTime();
-        metrics.jobStarted();
-        // Whether the handler left this thread interrupted, or was interrupted out of its work. The
-        // flag is cleared while the outcome is recorded and restored afterwards: JDBC calls made on
-        // an interrupted thread fail (a pool's wait for a connection throws, a socket read is
-        // closed), so recording with the flag set would lose the outcome and leave the job RUNNING
-        // until its lease expires. Handlers that restore the flag before throwing, or swallow it and
-        // return, are common enough that the engine cannot assume otherwise.
-        boolean interrupted = false;
-        try {
-            JobHandler handler = registry.require(job.type());
-            handler.handle(new JobContext(job, config.workerId()));
-            interrupted = Thread.interrupted();
-            recordSuccess(job);
-        } catch (PermanentJobFailureException e) {
-            interrupted |= Thread.interrupted();
-            // The capped description, as stored: a handler's message can be arbitrarily long.
-            String error = describe(e);
-            log.warn("Job {} ({}) failed permanently on attempt {}: {}",
-                    job.id(), job.type(), job.attempt(), error);
-            metrics.attemptFailed();
-            recordDeadLetter(job, error);
-        } catch (Throwable t) {
-            interrupted |= Thread.interrupted() || t instanceof InterruptedException;
-            metrics.attemptFailed();
-            recordFailure(job, t);
-        } finally {
-            if (interrupted) {
-                // Shutdown passed its drain deadline and interrupted us, or the handler did. The
-                // interrupt stays a fact about this thread, so put it back, but only now that the
-                // outcome is recorded: with it set earlier the recording is what fails.
-                Thread.currentThread().interrupt();
-            }
-            metrics.jobFinished(Duration.ofNanos(System.nanoTime() - startNanos));
-        }
-    }
-
-    private void recordSuccess(Job job) {
-        try {
-            if (store.complete(job.id(), config.workerId(), job.attempt(), clock.instant()).isPresent()) {
-                metrics.jobSucceeded();
-                log.debug("Job {} ({}) completed on attempt {}", job.id(), job.type(), job.attempt());
-            } else {
-                metrics.leaseLost();
-                log.warn("Job {} finished attempt {} but its lease was already gone. It ran longer "
-                        + "than the visibility timeout ({}) and another attempt may have re-run it",
-                        job.id(), job.attempt(), config.visibilityTimeout());
-            }
-        } catch (RuntimeException e) {
-            // The work happened; we just could not say so. The lease expires and the job is
-            // retried. That is why handlers have to be idempotent.
-            log.error("Job {} succeeded but the result could not be recorded", job.id(), e);
-        }
-    }
-
-    private void recordFailure(Job job, Throwable failure) {
-        String error = describe(failure);
-        if (failure instanceof UnknownJobTypeException) {
-            // Possibly a rolling deploy where another instance already has the handler, so this
-            // is retryable rather than fatal, but it is worth shouting about. Submission-time
-            // unknowns are refused outright by JobQueue.submit; the split is ADR-0001.
-            log.error("No handler for job type '{}' on worker {}; job {} will be retried",
-                    job.type(), config.workerId(), job.id());
-        } else {
-            log.warn("Job {} ({}) failed on attempt {}/{}: {}",
-                    job.id(), job.type(), job.attempt(), job.maxRetries() + 1, error);
-        }
-
-        if (job.retriesExhausted()) {
-            recordDeadLetter(job, error);
-            return;
-        }
-        try {
-            Instant now = clock.instant();
-            Duration backoff = retryPolicy.backoffAfter(job.attempt());
-            Instant retryAt = now.plus(backoff);
-            if (store.fail(job.id(), config.workerId(), job.attempt(), error, retryAt, now).isPresent()) {
-                metrics.retryScheduled();
-                log.debug("Job {} retry {} scheduled in {}", job.id(), job.attempt() + 1, backoff);
-            } else {
-                metrics.leaseLost();
-                log.warn("Job {} failed on attempt {} but its lease was already gone; a later "
-                        + "attempt owns it", job.id(), job.attempt());
-            }
-        } catch (RuntimeException e) {
-            log.error("Job {} failed and the failure could not be recorded", job.id(), e);
-        }
-    }
-
-    private void recordDeadLetter(Job job, String error) {
-        try {
-            if (store.deadLetter(job.id(), config.workerId(), job.attempt(), error, clock.instant()).isPresent()) {
-                metrics.jobDeadLettered();
-                log.error("Job {} ({}) dead-lettered after {} attempt(s): {}",
-                        job.id(), job.type(), job.attempt(), error);
-            } else {
-                metrics.leaseLost();
-            }
-        } catch (RuntimeException e) {
-            log.error("Job {} could not be dead-lettered", job.id(), e);
-        }
-    }
-
-    private static String describe(Throwable t) {
-        String message = t.getMessage() == null ? t.getClass().getName()
-                : t.getClass().getSimpleName() + ": " + t.getMessage();
-        return message.length() <= MAX_ERROR_LENGTH
-                ? message
-                : message.substring(0, MAX_ERROR_LENGTH - 3) + "...";
     }
 
     // ---------------------------------------------------------------- shutdown

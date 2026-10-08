@@ -70,12 +70,13 @@ import javax.sql.DataSource;
  */
 public final class JdbcJobRows implements JobRows {
 
-    private static final String COLUMNS =
+    /** Every column this adapter reads and writes; {@link JobSchema} checks the table has them. */
+    static final String COLUMNS =
             "id, type, payload, priority, max_retries, attempt, state, scheduled_at, "
-            + "created_at, updated_at, locked_until, locked_by, last_error";
+            + "created_at, updated_at, locked_until, locked_by, lease_id, last_error";
 
     private static final String INSERT_SQL =
-            "INSERT INTO jobs (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO jobs (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String SELECT_BY_ID_SQL =
             "SELECT " + COLUMNS + " FROM jobs WHERE id = ?";
@@ -86,7 +87,7 @@ public final class JdbcJobRows implements JobRows {
     /** Only the columns a transition can change; id, type, payload and created_at are immutable. */
     private static final String UPDATE_SQL =
             "UPDATE jobs SET attempt = ?, state = ?, scheduled_at = ?, updated_at = ?,"
-            + " locked_until = ?, locked_by = ?, last_error = ? WHERE id = ?";
+            + " locked_until = ?, locked_by = ?, lease_id = ?, last_error = ? WHERE id = ?";
 
     private static final String DELETE_BY_ID_SQL = "DELETE FROM jobs WHERE id = ?";
 
@@ -97,12 +98,6 @@ public final class JdbcJobRows implements JobRows {
      */
     public JdbcJobRows(DataSource dataSource) {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
-    }
-
-    /** Convenience: apply the schema, then build a store over the same DataSource. */
-    public static JobStore createAndInitializeSchema(DataSource dataSource) {
-        JobSchema.initialize(dataSource);
-        return JobStore.over(new JdbcJobRows(dataSource));
     }
 
     /**
@@ -190,7 +185,8 @@ public final class JdbcJobRows implements JobRows {
                 setInstant(statement, 10, job.updatedAt());
                 setInstant(statement, 11, job.lockedUntil());
                 statement.setString(12, job.lockedBy());
-                statement.setString(13, job.lastError());
+                statement.setObject(13, job.leaseId());
+                statement.setString(14, job.lastError());
                 statement.executeUpdate();
             } catch (SQLException e) {
                 throw failure(e);
@@ -256,8 +252,9 @@ public final class JdbcJobRows implements JobRows {
                     setInstant(statement, 4, job.updatedAt());
                     setInstant(statement, 5, job.lockedUntil());
                     statement.setString(6, job.lockedBy());
-                    statement.setString(7, job.lastError());
-                    statement.setObject(8, job.id());
+                    statement.setObject(7, job.leaseId());
+                    statement.setString(8, job.lastError());
+                    statement.setObject(9, job.id());
                     statement.addBatch();
                 }
                 statement.executeBatch();
@@ -351,6 +348,7 @@ public final class JdbcJobRows implements JobRows {
                 instant(resultSet, "updated_at"),
                 instant(resultSet, "locked_until"),
                 resultSet.getString("locked_by"),
+                resultSet.getObject("lease_id", UUID.class),
                 resultSet.getString("last_error"));
     }
 

@@ -7,6 +7,10 @@ import java.time.Duration;
 public interface RetryPolicy {
 
     /**
+     * Asked only after an attempt that has a retry left. On the last permitted attempt the store
+     * dead-letters the job without asking, so a policy need not answer for an attempt past a job's
+     * retry budget.
+     *
      * @param attempt the attempt that just failed, 1-based
      * @return how long to wait before the next attempt
      */

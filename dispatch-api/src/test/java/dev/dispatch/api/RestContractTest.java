@@ -447,13 +447,14 @@ class RestContractTest {
 
     /**
      * Buries a job by hand: claim it, then dead-letter it. Only possible because no dispatcher
-     * is competing for the row.
+     * is competing for the row. Fails rather than bury some other job, if one is due first.
      */
     private Job deadJob(int maxRetries) {
         Job job = store.insert(new JobSubmission("send-email", "{}", 0, maxRetries, PAST),
                 Instant.now());
-        store.claim(WORKER, 1, Duration.ofMinutes(5), Instant.now());
-        return store.deadLetter(job.id(), WORKER, 1, "boom", Instant.now()).orElseThrow();
+        Job claimed = store.claim(WORKER, 1, Duration.ofMinutes(5), Instant.now()).get(0);
+        assertThat(claimed.id()).as("the claim took the job just inserted").isEqualTo(job.id());
+        return store.deadLetter(claimed.lease(), "boom", Instant.now()).orElseThrow();
     }
 
     private void assertProblem(
