@@ -145,9 +145,11 @@ final class AttemptRunner {
         if (failure instanceof UnknownJobTypeException) {
             // Possibly a rolling deploy where another instance already has the handler, so this
             // is retryable rather than fatal, but it is worth shouting about. Submission-time
-            // unknowns are refused outright by JobQueue.submit; the split is ADR-0001.
-            log.error("No handler for job type '{}' on worker {}; job {} will be retried",
-                    job.type(), config.workerId(), job.id());
+            // unknowns are refused outright by JobQueue.submit; the split is ADR-0001. Whether a
+            // retry is left is the store's call, made below, so this line promises none.
+            log.error("No handler for job type '{}' on worker {}; job {} fails attempt {} and is "
+                    + "retried while its budget lasts", job.type(), config.workerId(), job.id(),
+                    job.attempt());
         } else {
             log.warn("Job {} ({}) failed on attempt {}/{}: {}",
                     job.id(), job.type(), job.attempt(), job.maxRetries() + 1, error);
@@ -180,6 +182,8 @@ final class AttemptRunner {
                 deadLettered(job, error);
             } else {
                 metrics.leaseLost();
+                log.warn("Job {} failed permanently on attempt {} but its lease was already gone; "
+                        + "the dead letter was not recorded", job.id(), job.attempt());
             }
         } catch (RuntimeException e) {
             log.error("Job {} could not be dead-lettered", job.id(), e);
