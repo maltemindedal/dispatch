@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.store.JobStore;
+import dev.dispatch.core.store.JobStoreException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -222,6 +224,58 @@ class JobSchemaTest {
             assertThatCode(() -> statement.executeQuery("SELECT lease_id FROM jobs"))
                     .doesNotThrowAnyException();
         }
+    }
+
+    @Test
+    @DisplayName("starting over an up-to-date schema does not wait behind an open read of jobs")
+    void startingDoesNotQueueBehindAReader() throws Exception {
+        JobSchema.initialize(dataSource);
+        HikariConfig impatient = PostgresTestSupport.config(POSTGRES, 2);
+        // Gives up on a lock after a second, as docker-compose's lock_timeout does after ten.
+        impatient.setConnectionInitSql("SET lock_timeout = '1s'");
+
+        try (Connection reader = dataSource.getConnection();
+                HikariDataSource restarting = new HikariDataSource(impatient)) {
+            // A backup or a long report: an open transaction that has read jobs holds ACCESS SHARE
+            // on it until it ends. ADD COLUMN wants ACCESS EXCLUSIVE, and every claim, insert and
+            // read from every instance would queue behind that request.
+            reader.setAutoCommit(false);
+            try (Statement statement = reader.createStatement()) {
+                statement.executeQuery("SELECT COUNT(*) FROM jobs").close();
+            }
+
+            assertThatCode(() -> JobSchema.initialize(restarting)).doesNotThrowAnyException();
+            reader.rollback();
+        }
+    }
+
+    @Test
+    @DisplayName("a table that lacks a column the adapter reads fails at startup, not on the first claim")
+    void verifiesEveryColumnTheAdapterReads() throws Exception {
+        // Made by hand or by another tool: the script's CREATE TABLE skips it, the ALTER adds
+        // lease_id and the indexes build, but last_error is missing.
+        try (Connection connection = dataSource.getConnection();
+                Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE jobs (
+                        id           UUID         PRIMARY KEY,
+                        type         VARCHAR(255) NOT NULL,
+                        payload      TEXT,
+                        priority     INTEGER      NOT NULL DEFAULT 0,
+                        max_retries  INTEGER      NOT NULL DEFAULT 3,
+                        attempt      INTEGER      NOT NULL DEFAULT 0,
+                        state        VARCHAR(16)  NOT NULL,
+                        scheduled_at TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+                        created_at   TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+                        updated_at   TIMESTAMP(6) WITH TIME ZONE NOT NULL,
+                        locked_until TIMESTAMP(6) WITH TIME ZONE,
+                        locked_by    VARCHAR(255)
+                    )""");
+        }
+
+        assertThatThrownBy(() -> JobSchema.initialize(dataSource))
+                .isInstanceOf(JobStoreException.class)
+                .hasMessageContaining("not usable");
     }
 
     @Test

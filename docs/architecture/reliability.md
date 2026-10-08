@@ -127,9 +127,18 @@ exists".
 
 Two replicas rolling out simultaneously is the normal case, so `JobSchema` treats already-exists
 errors (a small set of SQL states, including that catalog-level unique violation) as success and
-then verifies the table is actually queryable. `JobSchemaTest` reproduces the race directly: ten
-rounds of twelve threads racing from an empty schema, which fails on the first round without that
-handling.
+then verifies the table has every column `JdbcJobRows` uses. `JobSchemaTest` reproduces the race
+directly: ten rounds of twelve threads racing from an empty schema, which fails on the first round
+without that handling.
+
+The script also carries one additive change, `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_id`,
+for tables created before the column existed. `ADD COLUMN` takes an ACCESS EXCLUSIVE lock before it
+checks `IF NOT EXISTS`, so `JobSchema` looks the column up in the catalog first, which locks
+nothing, and runs the statement only when the column is missing. A normal startup therefore never
+waits behind an open transaction on `jobs`, such as a backup. Two instances that both find the
+column missing are safe too: PostgreSQL checks again under the lock, so the second waits, then
+skips. `JobSchemaTest` covers both: twelve instances upgrading one table at once, and a restart
+with a one-second `lock_timeout` while a reader holds the table open.
 
 ## Ordering
 

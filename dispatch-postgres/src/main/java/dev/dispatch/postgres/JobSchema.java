@@ -5,11 +5,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
@@ -24,8 +29,13 @@ import org.slf4j.LoggerFactory;
  * script should go, and it keeps the dependency list honest. The next schema change is the point
  * to replace this with Flyway or Liquibase pointed at the same SQL.
  *
- * <p>The added column needs no entry in the tolerated SQL states. PostgreSQL checks for the column
- * under the table lock, so a second instance adding it at the same moment waits, then skips.
+ * <p>That one change runs only when the column is missing. PostgreSQL takes an ACCESS EXCLUSIVE
+ * lock for {@code ADD COLUMN} before it looks at {@code IF NOT EXISTS}, so running it on every
+ * startup would queue behind any open transaction on {@code jobs}, such as a backup or a long
+ * report, and every claim from every instance would queue behind it in turn. The catalog lookup
+ * that comes first takes no lock on the table. Two instances that both find the column missing
+ * still race safely: PostgreSQL checks for the column under the lock, so the second waits, then
+ * skips, and the added column needs no entry in the tolerated SQL states.
  *
  * <h2>Why {@code IF NOT EXISTS} is not enough on its own</h2>
  * In PostgreSQL, {@code CREATE TABLE IF NOT EXISTS} is <em>not</em> atomic against concurrent DDL.
@@ -52,6 +62,11 @@ public final class JobSchema {
             "42P16",  // invalid_table_definition, seen on some concurrent index races
             "23505"); // unique_violation on pg_type / pg_class
 
+    /** The script's additive change: {@code ALTER TABLE <table> ADD COLUMN IF NOT EXISTS <column>}. */
+    private static final Pattern ADD_COLUMN = Pattern.compile(
+            "ALTER\\s+TABLE\\s+(\\w+)\\s+ADD\\s+COLUMN\\s+IF\\s+NOT\\s+EXISTS\\s+(\\w+)\\b.*",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
     private JobSchema() {
     }
 
@@ -63,6 +78,10 @@ public final class JobSchema {
             // abort the transaction and every statement after it would fail too.
             connection.setAutoCommit(true);
             for (String sql : statements) {
+                if (addsAColumnAlreadyThere(connection, sql)) {
+                    log.debug("Schema column already present, statement skipped: {}", sql);
+                    continue;
+                }
                 executeToleratingConcurrentCreation(connection, sql);
             }
         } catch (SQLException e) {
@@ -70,6 +89,47 @@ public final class JobSchema {
         }
         verifySchemaUsable(dataSource);
         log.info("Job queue schema is present ({} statement(s) applied)", statements.size());
+    }
+
+    /**
+     * True when {@code sql} is an {@code ALTER TABLE ... ADD COLUMN IF NOT EXISTS} for a column the
+     * table already has. Reads the catalog through {@link DatabaseMetaData}, which locks nothing.
+     */
+    private static boolean addsAColumnAlreadyThere(Connection connection, String sql)
+            throws SQLException {
+        Matcher addColumn = ADD_COLUMN.matcher(sql);
+        if (!addColumn.matches()) {
+            return false;
+        }
+        DatabaseMetaData catalog = connection.getMetaData();
+        String escape = catalog.getSearchStringEscape();
+        try (ResultSet column = catalog.getColumns(connection.getCatalog(),
+                pattern(connection.getSchema(), escape),
+                pattern(asStored(addColumn.group(1), catalog), escape),
+                pattern(asStored(addColumn.group(2), catalog), escape))) {
+            return column.next();
+        }
+    }
+
+    /** An unquoted name the way the catalog stores it: lower case on PostgreSQL, upper on H2. */
+    private static String asStored(String name, DatabaseMetaData catalog) throws SQLException {
+        if (catalog.storesUpperCaseIdentifiers()) {
+            return name.toUpperCase(Locale.ROOT);
+        }
+        if (catalog.storesLowerCaseIdentifiers()) {
+            return name.toLowerCase(Locale.ROOT);
+        }
+        return name;
+    }
+
+    /** A metadata search pattern that matches {@code name} exactly, so {@code _} is not a wildcard. */
+    private static String pattern(String name, String escape) {
+        if (name == null || escape == null || escape.isEmpty()) {
+            return name;
+        }
+        return name.replace(escape, escape + escape)
+                .replace("_", escape + "_")
+                .replace("%", escape + "%");
     }
 
     private static void executeToleratingConcurrentCreation(Connection connection, String sql)
@@ -88,13 +148,14 @@ public final class JobSchema {
     }
 
     /**
-     * Confirms the table is actually queryable. Without this, swallowing "already exists" errors
-     * could hide a genuine failure and leave the application to discover it on its first claim.
+     * Confirms the table has every column {@link JdbcJobRows} reads and writes. Without this,
+     * swallowing "already exists" errors, or a table made by hand, could hide a missing column and
+     * leave the application to discover it on its first claim. It reads no rows.
      */
     private static void verifySchemaUsable(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection();
                 Statement statement = connection.createStatement()) {
-            statement.execute("SELECT COUNT(*) FROM jobs");
+            statement.execute("SELECT " + JdbcJobRows.COLUMNS + " FROM jobs WHERE 1 = 0");
         } catch (SQLException e) {
             throw new JobStoreException(
                     "Job queue schema is not usable after initialization: " + e.getMessage(), e);

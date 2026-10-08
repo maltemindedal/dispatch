@@ -109,8 +109,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   `CREATE TABLE IF NOT EXISTS` never alters an existing table. The script now carries one
   additive, idempotent change for tables created before it,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_id UUID`, kept out of the `CREATE TABLE` so
-  every table gets the column from that one statement. The next schema change is the point to
-  bring in a migration tool, not a second `ALTER`. `JobSchema.readStatements` drops
+  every table gets the column from that one statement. `JobSchema` runs it only when the catalog
+  says the column is missing, since `ADD COLUMN` takes an ACCESS EXCLUSIVE lock before it checks
+  `IF NOT EXISTS`. The next schema change is the point to bring in a migration tool, not a second
+  `ALTER`. `JobSchema.readStatements` drops
   whole-line `--` comments and splits on `;`, so a `;` inside a string literal or a trailing
   comment cuts a statement in two.
 - H2 runs the same SQL with coarser locking: a contending reader gets an empty claim, not the next

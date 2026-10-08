@@ -70,7 +70,8 @@ import javax.sql.DataSource;
  */
 public final class JdbcJobRows implements JobRows {
 
-    private static final String COLUMNS =
+    /** Every column this adapter reads and writes; {@link JobSchema} checks the table has them. */
+    static final String COLUMNS =
             "id, type, payload, priority, max_retries, attempt, state, scheduled_at, "
             + "created_at, updated_at, locked_until, locked_by, lease_id, last_error";
 

@@ -36,6 +36,10 @@ CREATE TABLE IF NOT EXISTS jobs (
 -- this one statement, so the two cannot drift apart, and a new database runs the same statement
 -- an old one does.
 --
+-- JobSchema runs it only when the catalog says the column is missing. ADD COLUMN takes an ACCESS
+-- EXCLUSIVE lock before it looks at IF NOT EXISTS, so running it on every startup would queue
+-- behind any open transaction on jobs and stall every claim behind that.
+--
 -- Two instances running it at once is safe. PostgreSQL checks for the column under the table
 -- lock, so the second waits for the first, then finds the column and skips.
 --
