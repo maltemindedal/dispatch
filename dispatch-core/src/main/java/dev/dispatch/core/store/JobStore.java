@@ -149,11 +149,14 @@ public final class JobStore implements AutoCloseable {
     }
 
     /**
-     * RUNNING -> FAILED, parked until {@code retryAt}. Empty if the lease was lost, as for
-     * {@link #complete}.
+     * RUNNING -> FAILED, parked until {@code retryAt}, or DEAD if this was the last permitted
+     * attempt ({@link Job#attemptFailed}). The budget is checked on the row held under the lease,
+     * in the same step as the write. Empty if the lease was lost, as for {@link #complete}.
+     *
+     * @return the job as written, so the caller can tell a scheduled retry from a dead letter
      */
     public Optional<Job> fail(Lease lease, String error, Instant retryAt, Instant now) {
-        return transitionLeased(lease, job -> job.failedWithRetryAt(retryAt, error, now));
+        return transitionLeased(lease, job -> job.attemptFailed(error, retryAt, now));
     }
 
     /** RUNNING -> DEAD. Empty if the lease was lost, as for {@link #complete}. */

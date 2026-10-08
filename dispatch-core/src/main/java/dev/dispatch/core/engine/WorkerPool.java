@@ -6,6 +6,7 @@ import dev.dispatch.core.handler.JobHandlerRegistry;
 import dev.dispatch.core.handler.PermanentJobFailureException;
 import dev.dispatch.core.handler.UnknownJobTypeException;
 import dev.dispatch.core.job.Job;
+import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.retry.RetryPolicy;
 import dev.dispatch.core.store.JobStore;
 import java.time.Clock;
@@ -13,6 +14,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -392,21 +394,21 @@ public final class WorkerPool implements AutoCloseable {
                     job.id(), job.type(), job.attempt(), job.maxRetries() + 1, error);
         }
 
-        if (job.retriesExhausted()) {
-            recordDeadLetter(job, error);
-            return;
-        }
         try {
             Instant now = clock.instant();
+            // The store decides whether a retry is left, on the row it holds. So the backoff is
+            // computed on the last attempt too, where the store dead-letters the job and ignores it.
             Duration backoff = retryPolicy.backoffAfter(job.attempt());
-            Instant retryAt = now.plus(backoff);
-            if (store.fail(job.lease(), error, retryAt, now).isPresent()) {
+            Optional<Job> recorded = store.fail(job.lease(), error, now.plus(backoff), now);
+            if (recorded.isEmpty()) {
+                metrics.leaseLost();
+                log.warn("Job {} failed on attempt {} but its lease was already gone; the failure "
+                        + "was not recorded", job.id(), job.attempt());
+            } else if (recorded.get().state() == JobState.DEAD) {
+                deadLettered(job, error);
+            } else {
                 metrics.retryScheduled();
                 log.debug("Job {} retry {} scheduled in {}", job.id(), job.attempt() + 1, backoff);
-            } else {
-                metrics.leaseLost();
-                log.warn("Job {} failed on attempt {} but its lease was already gone; a later "
-                        + "attempt owns it", job.id(), job.attempt());
             }
         } catch (RuntimeException e) {
             log.error("Job {} failed and the failure could not be recorded", job.id(), e);
@@ -416,15 +418,20 @@ public final class WorkerPool implements AutoCloseable {
     private void recordDeadLetter(Job job, String error) {
         try {
             if (store.deadLetter(job.lease(), error, clock.instant()).isPresent()) {
-                metrics.jobDeadLettered();
-                log.error("Job {} ({}) dead-lettered after {} attempt(s): {}",
-                        job.id(), job.type(), job.attempt(), error);
+                deadLettered(job, error);
             } else {
                 metrics.leaseLost();
             }
         } catch (RuntimeException e) {
             log.error("Job {} could not be dead-lettered", job.id(), e);
         }
+    }
+
+    /** Counts and logs a dead letter the store has recorded, however the attempt got there. */
+    private void deadLettered(Job job, String error) {
+        metrics.jobDeadLettered();
+        log.error("Job {} ({}) dead-lettered after {} attempt(s): {}",
+                job.id(), job.type(), job.attempt(), error);
     }
 
     private static String describe(Throwable t) {

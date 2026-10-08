@@ -43,14 +43,14 @@ class JobTest {
         assertThat(firstAttempt.retriesExhausted()).isFalse();
 
         Job secondAttempt = firstAttempt
-                .failedWithRetryAt(NOW, "boom", NOW)
+                .attemptFailed("boom", NOW, NOW)
                 .promotedToPending(NOW)
                 .claimedBy("w", NOW, LEASE);
         assertThat(secondAttempt.attempt()).isEqualTo(2);
         assertThat(secondAttempt.retriesRemaining()).isEqualTo(1);
 
         Job thirdAttempt = secondAttempt
-                .failedWithRetryAt(NOW, "boom", NOW)
+                .attemptFailed("boom", NOW, NOW)
                 .promotedToPending(NOW)
                 .claimedBy("w", NOW, LEASE);
         assertThat(thirdAttempt.attempt()).isEqualTo(3);
@@ -66,6 +66,7 @@ class JobTest {
 
         assertThat(firstAttempt.attempt()).isEqualTo(1);
         assertThat(firstAttempt.retriesExhausted()).isTrue();
+        assertThat(firstAttempt.attemptFailed("boom", NOW, NOW).state()).isEqualTo(JobState.DEAD);
     }
 
     @Test
@@ -79,11 +80,11 @@ class JobTest {
     }
 
     @Test
-    @DisplayName("failing parks the job at its backoff time and records the error")
+    @DisplayName("a failed attempt with retries left parks the job at its backoff time and records the error")
     void failStoresBackoffAndError() {
         Instant retryAt = NOW.plus(Duration.ofSeconds(30));
         Job failed = pendingJob(3).claimedBy("w", NOW, LEASE)
-                .failedWithRetryAt(retryAt, "SMTP timeout", NOW);
+                .attemptFailed("SMTP timeout", retryAt, NOW);
 
         assertThat(failed.state()).isEqualTo(JobState.FAILED);
         assertThat(failed.scheduledAt()).isEqualTo(retryAt);
@@ -91,6 +92,29 @@ class JobTest {
         assertThat(failed.lockedBy()).isNull();
         assertThat(failed.dueAt(NOW)).isFalse();
         assertThat(failed.dueAt(retryAt)).isTrue();
+    }
+
+    @Test
+    @DisplayName("a failed attempt that was the last permitted one dead-letters the job and leaves its backoff unused")
+    void lastFailedAttemptDeadLetters() {
+        // maxRetries=1 allows two attempts; the second is the last.
+        Job lastAttempt = pendingJob(1).claimedBy("w", NOW, LEASE)
+                .attemptFailed("first try", NOW, NOW)
+                .promotedToPending(NOW)
+                .claimedBy("w", NOW, LEASE);
+        assertThat(lastAttempt.retriesExhausted()).isTrue();
+        Instant later = NOW.plusSeconds(10);
+        Instant retryAt = later.plusSeconds(30);
+
+        Job dead = lastAttempt.attemptFailed("SMTP timeout", retryAt, later);
+
+        assertThat(dead).isEqualTo(lastAttempt.deadLettered("SMTP timeout", later));
+        assertThat(dead.state()).isEqualTo(JobState.DEAD);
+        assertThat(dead.attempt()).isEqualTo(2);
+        assertThat(dead.lastError()).isEqualTo("SMTP timeout");
+        assertThat(dead.scheduledAt()).isNotEqualTo(retryAt);
+        assertThat(dead.lockedBy()).isNull();
+        assertThat(dead.lockedUntil()).isNull();
     }
 
     @Test
@@ -148,7 +172,7 @@ class JobTest {
 
         assertThatThrownBy(() -> pending.completed(NOW))
                 .isInstanceOf(IllegalJobTransitionException.class);
-        assertThatThrownBy(() -> pending.failedWithRetryAt(NOW, "x", NOW))
+        assertThatThrownBy(() -> pending.attemptFailed("x", NOW, NOW))
                 .isInstanceOf(IllegalJobTransitionException.class);
 
         Job completed = pending.claimedBy("w", NOW, LEASE).completed(NOW);
@@ -163,7 +187,7 @@ class JobTest {
         Job scheduled = Job.newJob(UUID.randomUUID(),
                 new JobSubmission("send-email", "{}", 0, 3, NOW.plus(Duration.ofHours(1))), NOW);
         Job failed = pending.claimedBy("w", NOW, LEASE)
-                .failedWithRetryAt(NOW.plus(Duration.ofMinutes(1)), "x", NOW);
+                .attemptFailed("x", NOW.plus(Duration.ofMinutes(1)), NOW);
 
         for (Job job : new Job[] {pending, scheduled, failed}) {
             assertThatThrownBy(() -> job.deadLettered("gave up", NOW))

@@ -141,8 +141,12 @@ public record Job(
                 scheduledAt, createdAt, now, null, null, lastError);
     }
 
-    /** RUNNING -> FAILED: releases the lease and parks the job until {@code retryAt}. */
-    public Job failedWithRetryAt(Instant retryAt, String error, Instant now) {
+    /**
+     * RUNNING -> FAILED: releases the lease and parks the job until {@code retryAt}. Private
+     * because only {@link #attemptFailed} may choose it: every other path to FAILED would skip
+     * the retry budget.
+     */
+    private Job failedWithRetryAt(Instant retryAt, String error, Instant now) {
         state.requireTransitionTo(JobState.FAILED);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.FAILED,
                 Objects.requireNonNull(retryAt, "retryAt"), createdAt, now, null, null, error);
@@ -173,10 +177,10 @@ public record Job(
      * attempt, unless that attempt was the last one the retry budget allowed, in which case the
      * job is dead-lettered.
      *
-     * <p>A worker that dies mid-job never reaches {@code WorkerPool}'s failure path, which is the
-     * only other place the budget is checked. Without this check a job that reliably kills its
-     * worker (an out-of-memory kill, a native crash) would be reclaimed and re-claimed forever,
-     * each pass taking down another worker.
+     * <p>A worker that dies mid-job never reports a failure, so {@link #attemptFailed}, the only
+     * other place the budget decides what happens to a job, never runs for it. Without this check a
+     * job that reliably kills its worker (an out-of-memory kill, a native crash) would be reclaimed
+     * and re-claimed forever, each pass taking down another worker.
      */
     public Job reclaimed(Instant now) {
         if (retriesExhausted()) {
@@ -184,6 +188,23 @@ public record Job(
                     + lockedBy + " never reported back", now);
         }
         return leaseExpired(now);
+    }
+
+    /**
+     * What the store does with a RUNNING job whose attempt failed: FAILED until {@code retryAt},
+     * unless that attempt was the last one the retry budget allowed, in which case the job is
+     * dead-lettered and {@code retryAt} goes unused. Either way {@code error} becomes the last
+     * error.
+     *
+     * <p>This is the budget check for a failure the worker reports, as {@link #reclaimed} is for
+     * an attempt whose worker never reported back. The store applies it to the row it holds under
+     * the lease, so the decision and the write are one atomic step.
+     */
+    public Job attemptFailed(String error, Instant retryAt, Instant now) {
+        if (retriesExhausted()) {
+            return deadLettered(error, now);
+        }
+        return failedWithRetryAt(retryAt, error, now);
     }
 
     /** SCHEDULED/FAILED -> PENDING: the delay or backoff elapsed and the job is claimable again. */

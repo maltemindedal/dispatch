@@ -108,8 +108,12 @@ class RetryAndDeadLetterTest {
 
         Job job = queue.submit(new JobSubmission("always-fails", "{}", 0, 2, null));
 
-        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
-                assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.DEAD));
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.DEAD);
+            // These two are counted just after the write they count, so wait for them too.
+            assertThat(queue.metrics().deadLettered()).isEqualTo(1);
+            assertThat(queue.metrics().retriesScheduled()).isEqualTo(2);
+        });
 
         Job dead = store.find(job.id()).orElseThrow();
         // maxRetries=2 means one initial attempt plus two retries.
@@ -117,7 +121,8 @@ class RetryAndDeadLetterTest {
         assertThat(dead.attempt()).isEqualTo(3);
         assertThat(dead.lastError()).contains("nope");
         assertThat(dead.lockedBy()).isNull();
-        assertThat(queue.metrics().deadLettered()).isEqualTo(1);
+        assertThat(queue.metrics().failedAttempts()).isEqualTo(3);
+        assertThat(queue.metrics().leasesLost()).isZero();
     }
 
     @Test

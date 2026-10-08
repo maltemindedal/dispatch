@@ -380,6 +380,37 @@ public abstract class JobStoreContract {
         }
 
         @Test
+        @DisplayName("fail on the last permitted attempt dead-letters the job instead of parking it")
+        void failOnTheLastAttemptDeadLetters() {
+            // maxRetries=1 allows two attempts. The first failure parks the job, the second
+            // spends the budget.
+            Job job = store.insert(new JobSubmission("send-email", "{}", 0, 1, null), now());
+            Lease first = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
+            assertThat(store.fail(first, "first", now(), now()).orElseThrow().state())
+                    .isEqualTo(JobState.FAILED);
+            assertThat(store.promoteDueJobs(now(), 100)).isEqualTo(1);
+            Lease last = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
+            assertThat(last.attempt()).isEqualTo(2);
+            clock.advance(Duration.ofSeconds(2));
+            Instant retryAt = now().plus(Duration.ofSeconds(30));
+
+            Optional<Job> dead = store.fail(last, "second", retryAt, now());
+
+            assertThat(dead).isPresent();
+            assertThat(dead.get().state()).isEqualTo(JobState.DEAD);
+            assertThat(dead.get().lastError()).isEqualTo("second");
+            assertThat(dead.get().attempt()).isEqualTo(2);
+            assertThat(dead.get().lockedBy()).isNull();
+            assertThat(dead.get().lockedUntil()).isNull();
+            assertThat(dead.get().updatedAt()).isEqualTo(now());
+            assertThat(reload(job)).isEqualTo(dead.get());
+            // Terminal: nothing promotes it, even once the unused backoff has passed.
+            clock.advance(Duration.ofSeconds(30));
+            assertThat(store.promoteDueJobs(now(), 100)).isZero();
+            assertThat(store.claim(WORKER, 10, LEASE, now())).isEmpty();
+        }
+
+        @Test
         @DisplayName("deadLetter is terminal and keeps the error for inspection")
         void deadLetterIsTerminal() {
             insertDue();
