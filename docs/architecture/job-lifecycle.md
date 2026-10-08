@@ -55,14 +55,16 @@ These are what the six states are *for*:
 ## Who moves jobs, and when
 
 - **Submission** creates `PENDING` (due now) or `SCHEDULED` (future `scheduledAt`).
-- **The dispatcher** moves `PENDING → RUNNING` by claiming, stamping `locked_by` and
-  `locked_until`.
+- **The dispatcher** moves `PENDING → RUNNING` by claiming, stamping `locked_by`,
+  `locked_until` and a fresh `lease_id`.
 - **The handler outcome** moves `RUNNING` to `COMPLETED`, `FAILED` (retries left, backoff
   scheduled), or `DEAD` (budget exhausted, or `PermanentJobFailureException`).
 - **The maintenance sweeper**, on any instance, promotes due `SCHEDULED` and `FAILED` rows to
   `PENDING`, and returns `RUNNING` rows with expired leases to `PENDING`, or to `DEAD` when the
   lost attempt was the last the budget allowed ([crash recovery](reliability.md#visibility-timeout)).
-- **Operators** move `DEAD → PENDING` with a fresh budget via the API: a manual retry.
+- **Operators** move `DEAD → PENDING` with a fresh budget via the API: a manual retry. The
+  attempt count starts again from 0, so the next claim is attempt 1 again, under a new lease id
+  that keeps a stalled earlier attempt from recording over it.
 
 Every one of these paths calls `JobState.requireTransitionTo`, so an illegal move throws rather
 than corrupting the record.

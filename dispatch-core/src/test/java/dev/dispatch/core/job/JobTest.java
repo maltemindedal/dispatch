@@ -23,12 +23,14 @@ class JobTest {
     @Test
     @DisplayName("a claim opens a lease, counts the attempt and names the holder")
     void claimOpensLease() {
-        Job claimed = pendingJob(3).claimedBy("worker-1", NOW, LEASE);
+        UUID leaseId = UUID.randomUUID();
+        Job claimed = pendingJob(3).claimedBy("worker-1", leaseId, NOW, LEASE);
 
         assertThat(claimed.state()).isEqualTo(JobState.RUNNING);
         assertThat(claimed.attempt()).isEqualTo(1);
         assertThat(claimed.lockedBy()).isEqualTo("worker-1");
         assertThat(claimed.lockedUntil()).isEqualTo(NOW.plus(LEASE));
+        assertThat(claimed.leaseId()).isEqualTo(leaseId);
     }
 
     @Test
@@ -37,7 +39,7 @@ class JobTest {
         Job job = pendingJob(2);
         assertThat(job.retriesRemaining()).isEqualTo(2);
 
-        Job firstAttempt = job.claimedBy("w", NOW, LEASE);
+        Job firstAttempt = job.claimedBy("w", UUID.randomUUID(), NOW, LEASE);
         assertThat(firstAttempt.attempt()).isEqualTo(1);
         assertThat(firstAttempt.retriesRemaining()).isEqualTo(2);
         assertThat(firstAttempt.retriesExhausted()).isFalse();
@@ -45,14 +47,14 @@ class JobTest {
         Job secondAttempt = firstAttempt
                 .attemptFailed("boom", NOW, NOW)
                 .promotedToPending(NOW)
-                .claimedBy("w", NOW, LEASE);
+                .claimedBy("w", UUID.randomUUID(), NOW, LEASE);
         assertThat(secondAttempt.attempt()).isEqualTo(2);
         assertThat(secondAttempt.retriesRemaining()).isEqualTo(1);
 
         Job thirdAttempt = secondAttempt
                 .attemptFailed("boom", NOW, NOW)
                 .promotedToPending(NOW)
-                .claimedBy("w", NOW, LEASE);
+                .claimedBy("w", UUID.randomUUID(), NOW, LEASE);
         assertThat(thirdAttempt.attempt()).isEqualTo(3);
         assertThat(thirdAttempt.retriesRemaining()).isZero();
         // Failing here dead-letters rather than retrying.
@@ -62,7 +64,7 @@ class JobTest {
     @Test
     @DisplayName("maxRetries=0 means the first failure is fatal")
     void zeroRetriesDiesImmediately() {
-        Job firstAttempt = pendingJob(0).claimedBy("w", NOW, LEASE);
+        Job firstAttempt = pendingJob(0).claimedBy("w", UUID.randomUUID(), NOW, LEASE);
 
         assertThat(firstAttempt.attempt()).isEqualTo(1);
         assertThat(firstAttempt.retriesExhausted()).isTrue();
@@ -72,7 +74,8 @@ class JobTest {
     @Test
     @DisplayName("completing releases the lease")
     void completeReleasesLease() {
-        Job completed = pendingJob(3).claimedBy("w", NOW, LEASE).completed(NOW);
+        Job completed = pendingJob(3).claimedBy("w", UUID.randomUUID(), NOW, LEASE)
+                .completed(NOW);
 
         assertThat(completed.state()).isEqualTo(JobState.COMPLETED);
         assertThat(completed.lockedBy()).isNull();
@@ -83,7 +86,7 @@ class JobTest {
     @DisplayName("a failed attempt with retries left parks the job at its backoff time and records the error")
     void failStoresBackoffAndError() {
         Instant retryAt = NOW.plus(Duration.ofSeconds(30));
-        Job failed = pendingJob(3).claimedBy("w", NOW, LEASE)
+        Job failed = pendingJob(3).claimedBy("w", UUID.randomUUID(), NOW, LEASE)
                 .attemptFailed("SMTP timeout", retryAt, NOW);
 
         assertThat(failed.state()).isEqualTo(JobState.FAILED);
@@ -98,10 +101,10 @@ class JobTest {
     @DisplayName("a failed attempt that was the last permitted one dead-letters the job and leaves its backoff unused")
     void lastFailedAttemptDeadLetters() {
         // maxRetries=1 allows two attempts; the second is the last.
-        Job lastAttempt = pendingJob(1).claimedBy("w", NOW, LEASE)
+        Job lastAttempt = pendingJob(1).claimedBy("w", UUID.randomUUID(), NOW, LEASE)
                 .attemptFailed("first try", NOW, NOW)
                 .promotedToPending(NOW)
-                .claimedBy("w", NOW, LEASE);
+                .claimedBy("w", UUID.randomUUID(), NOW, LEASE);
         assertThat(lastAttempt.retriesExhausted()).isTrue();
         Instant later = NOW.plusSeconds(10);
         Instant retryAt = later.plusSeconds(30);
@@ -120,7 +123,7 @@ class JobTest {
     @Test
     @DisplayName("an expired lease is detectable and sends the job back to PENDING")
     void expiredLeaseReturnsToPending() {
-        Job running = pendingJob(3).claimedBy("worker-1", NOW, LEASE);
+        Job running = pendingJob(3).claimedBy("worker-1", UUID.randomUUID(), NOW, LEASE);
 
         assertThat(running.leaseExpiredAt(NOW.plus(LEASE).minusSeconds(1))).isFalse();
         assertThat(running.leaseExpiredAt(NOW.plus(LEASE))).isTrue();
@@ -141,8 +144,9 @@ class JobTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("PENDING");
 
-        Job running = pending.claimedBy("worker-1", NOW, LEASE);
-        assertThat(running.lease()).isEqualTo(new Lease(running.id(), "worker-1", 1));
+        UUID leaseId = UUID.randomUUID();
+        Job running = pending.claimedBy("worker-1", leaseId, NOW, LEASE);
+        assertThat(running.lease()).isEqualTo(new Lease(running.id(), "worker-1", 1, leaseId));
 
         assertThatThrownBy(() -> running.completed(NOW).lease())
                 .isInstanceOf(IllegalStateException.class);
@@ -151,9 +155,26 @@ class JobTest {
     }
 
     @Test
+    @DisplayName("only a running job carries a lease id, and every way out of RUNNING clears it")
+    void onlyARunningJobCarriesALeaseId() {
+        Job pending = pendingJob(3);
+        assertThat(pending.leaseId()).isNull();
+        Job running = pending.claimedBy("worker-1", UUID.randomUUID(), NOW, LEASE);
+        assertThat(running.leaseId()).isNotNull();
+
+        assertThat(running.completed(NOW).leaseId()).isNull();
+        assertThat(running.attemptFailed("boom", NOW, NOW).leaseId()).isNull();
+        assertThat(running.deadLettered("gave up", NOW).leaseId()).isNull();
+        assertThat(running.leaseExpired(NOW).leaseId()).isNull();
+        assertThat(running.reclaimed(NOW).leaseId()).isNull();
+        assertThat(running.deadLettered("gave up", NOW).manuallyRetried(NOW).leaseId()).isNull();
+    }
+
+    @Test
     @DisplayName("a manual retry hands a dead job back a full retry budget")
     void manualRetryResetsAttempts() {
-        Job dead = pendingJob(3).claimedBy("w", NOW, LEASE).deadLettered("gave up", NOW);
+        Job dead = pendingJob(3).claimedBy("w", UUID.randomUUID(), NOW, LEASE)
+                .deadLettered("gave up", NOW);
         Instant later = NOW.plus(Duration.ofHours(1));
 
         Job retried = dead.manuallyRetried(later);
@@ -175,8 +196,8 @@ class JobTest {
         assertThatThrownBy(() -> pending.attemptFailed("x", NOW, NOW))
                 .isInstanceOf(IllegalJobTransitionException.class);
 
-        Job completed = pending.claimedBy("w", NOW, LEASE).completed(NOW);
-        assertThatThrownBy(() -> completed.claimedBy("w", NOW, LEASE))
+        Job completed = pending.claimedBy("w", UUID.randomUUID(), NOW, LEASE).completed(NOW);
+        assertThatThrownBy(() -> completed.claimedBy("w", UUID.randomUUID(), NOW, LEASE))
                 .isInstanceOf(IllegalJobTransitionException.class);
     }
 
@@ -186,7 +207,7 @@ class JobTest {
         Job pending = pendingJob(3);
         Job scheduled = Job.newJob(UUID.randomUUID(),
                 new JobSubmission("send-email", "{}", 0, 3, NOW.plus(Duration.ofHours(1))), NOW);
-        Job failed = pending.claimedBy("w", NOW, LEASE)
+        Job failed = pending.claimedBy("w", UUID.randomUUID(), NOW, LEASE)
                 .attemptFailed("x", NOW.plus(Duration.ofMinutes(1)), NOW);
 
         for (Job job : new Job[] {pending, scheduled, failed}) {
@@ -194,7 +215,8 @@ class JobTest {
                     .as("%s -> DEAD", job.state())
                     .isInstanceOf(IllegalJobTransitionException.class);
         }
-        assertThat(pending.claimedBy("w", NOW, LEASE).deadLettered("gave up", NOW).state())
+        assertThat(pending.claimedBy("w", UUID.randomUUID(), NOW, LEASE)
+                .deadLettered("gave up", NOW).state())
                 .isEqualTo(JobState.DEAD);
     }
 
@@ -224,36 +246,64 @@ class JobTest {
     @Test
     @DisplayName("a job is held under the lease of its current attempt and no other")
     void heldUnderTheCurrentLeaseOnly() {
-        Job first = pendingJob(3).claimedBy("worker-1", NOW, LEASE);
-        Job second = first.leaseExpired(NOW.plus(LEASE)).claimedBy("worker-1", NOW.plus(LEASE), LEASE);
+        Job first = pendingJob(3).claimedBy("worker-1", UUID.randomUUID(), NOW, LEASE);
+        Job second = first.leaseExpired(NOW.plus(LEASE))
+                .claimedBy("worker-1", UUID.randomUUID(), NOW.plus(LEASE), LEASE);
 
         assertThat(first.heldUnder(first.lease())).isTrue();
-        assertThat(first.heldUnder(new Lease(first.id(), "worker-2", 1))).isFalse();
+        // Same job, worker and attempt under another claim is another lease.
+        assertThat(first.heldUnder(new Lease(first.id(), "worker-1", 1, UUID.randomUUID())))
+                .isFalse();
+        // The worker and attempt still count on their own. A row that an instance predating lease
+        // ids claimed can keep an earlier claim's lease id.
+        assertThat(first.heldUnder(new Lease(first.id(), "worker-2", 1, first.leaseId()))).isFalse();
+        assertThat(first.heldUnder(new Lease(first.id(), "worker-1", 2, first.leaseId()))).isFalse();
         // The same worker holds both, which is exactly why the lease carries the attempt.
         assertThat(second.heldUnder(second.lease())).isTrue();
         assertThat(second.heldUnder(first.lease())).isFalse();
         assertThat(second.completed(NOW).heldUnder(second.lease())).isFalse();
         // The same worker and attempt on another job is another lease.
-        Job otherJob = pendingJob(3).claimedBy("worker-1", NOW, LEASE);
+        Job otherJob = pendingJob(3).claimedBy("worker-1", UUID.randomUUID(), NOW, LEASE);
         assertThat(otherJob.heldUnder(first.lease())).isFalse();
     }
 
     @Test
-    @DisplayName("a lease names a job, a worker and an attempt of at least 1")
+    @DisplayName("after a manual retry, attempt 1 of the same worker is held under a new lease")
+    void manualRetryClaimsUnderANewLease() {
+        Job stalled = pendingJob(0).claimedBy("worker-1", UUID.randomUUID(), NOW, LEASE);
+        Job retried = stalled.reclaimed(NOW.plus(LEASE)).manuallyRetried(NOW.plus(LEASE))
+                .claimedBy("worker-1", UUID.randomUUID(), NOW.plus(LEASE), LEASE);
+
+        // Job, worker and attempt all match, so only the lease id tells the two claims apart.
+        assertThat(retried.attempt()).isEqualTo(stalled.attempt());
+        assertThat(retried.lockedBy()).isEqualTo(stalled.lockedBy());
+        assertThat(retried.lease()).isNotEqualTo(stalled.lease());
+        assertThat(retried.heldUnder(retried.lease())).isTrue();
+        assertThat(retried.heldUnder(stalled.lease())).isFalse();
+    }
+
+    @Test
+    @DisplayName("a lease names a job, a worker, an attempt of at least 1 and a claim")
     void leaseRequiresItsParts() {
         UUID id = UUID.randomUUID();
+        UUID leaseId = UUID.randomUUID();
 
-        assertThatThrownBy(() -> new Lease(null, "w", 1)).isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> new Lease(id, null, 1)).isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> new Lease(id, "w", 0))
+        assertThatThrownBy(() -> new Lease(null, "w", 1, leaseId))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new Lease(id, null, 1, leaseId))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new Lease(id, "w", 0, leaseId))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("attempt");
+        assertThatThrownBy(() -> new Lease(id, "w", 1, null))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessageContaining("leaseId");
     }
 
     @Test
     @DisplayName("reclaiming a job that still has retries re-queues it, exactly as an expired lease does")
     void reclaimWithRetriesLeftRequeues() {
-        Job running = pendingJob(3).claimedBy("crashed-worker", NOW, LEASE);
+        Job running = pendingJob(3).claimedBy("crashed-worker", UUID.randomUUID(), NOW, LEASE);
         Instant later = NOW.plus(LEASE).plusSeconds(1);
 
         Job reclaimed = running.reclaimed(later);
@@ -267,8 +317,8 @@ class JobTest {
     @DisplayName("reclaiming a job on its last permitted attempt dead-letters it")
     void reclaimOnTheLastAttemptDeadLetters() {
         // maxRetries=1 allows two attempts; the second is the last.
-        Job lastAttempt = pendingJob(1).claimedBy("w", NOW, LEASE)
-                .leaseExpired(NOW).claimedBy("crashed-worker", NOW, LEASE);
+        Job lastAttempt = pendingJob(1).claimedBy("w", UUID.randomUUID(), NOW, LEASE)
+                .leaseExpired(NOW).claimedBy("crashed-worker", UUID.randomUUID(), NOW, LEASE);
         assertThat(lastAttempt.retriesExhausted()).isTrue();
         Instant later = NOW.plus(LEASE).plusSeconds(1);
 
@@ -286,7 +336,7 @@ class JobTest {
     @Test
     @DisplayName("with no retries allowed, the only attempt is the last one")
     void reclaimWithNoRetriesAllowedDeadLetters() {
-        Job running = pendingJob(0).claimedBy("crashed-worker", NOW, LEASE);
+        Job running = pendingJob(0).claimedBy("crashed-worker", UUID.randomUUID(), NOW, LEASE);
 
         assertThat(running.reclaimed(NOW.plus(LEASE)).state()).isEqualTo(JobState.DEAD);
     }

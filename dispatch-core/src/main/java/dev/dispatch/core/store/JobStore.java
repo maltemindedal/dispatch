@@ -44,8 +44,9 @@ import java.util.function.UnaryOperator;
  *       {@link Lease} the claim handed out, apply only while the job is still held under it, and
  *       return {@link Optional#empty()} otherwise. That is what stops a worker that stalled past
  *       its visibility timeout from stomping on whoever legitimately took the job over, including
- *       that same worker's own later attempt. There is no way to record an outcome without a
- *       lease, so there is no way to skip the check.</li>
+ *       that same worker's own later attempt. Every claim gets a new lease id, so this holds even
+ *       when a manual retry makes the later claim attempt 1 again. There is no way to record an
+ *       outcome without a lease, so there is no way to skip the check.</li>
  *   <li><b>Atomic transitions.</b> Each method is a single atomic unit against concurrent
  *       callers.</li>
  *   <li><b>One failure vocabulary.</b> Storage failures become {@link JobStoreException} values,
@@ -118,7 +119,7 @@ public final class JobStore implements AutoCloseable {
      * Atomically takes up to {@code limit} claimable jobs that match
      * {@link JobSelection#CLAIMABLE},
      * moving each to RUNNING with a lease held by {@code workerId} until
-     * {@code now + visibilityTimeout}.
+     * {@code now + visibilityTimeout}. Each job gets a new lease id, so no two claims share a lease.
      *
      * @return the claimed jobs in execution order, possibly empty, never null
      */
@@ -128,8 +129,10 @@ public final class JobStore implements AutoCloseable {
             return List.of();
         }
         return rows.inExclusiveScope(scope -> {
+            // Lease ids come from UUID.randomUUID, not from idGenerator. That source names jobs,
+            // and tests feed it fixed or finite sequences that a claim must not use up.
             List<Job> claimed = scope.matching(JobSelection.CLAIMABLE, now, limit).stream()
-                    .map(job -> job.claimedBy(workerId, now, visibilityTimeout))
+                    .map(job -> job.claimedBy(workerId, UUID.randomUUID(), now, visibilityTimeout))
                     .toList();
             scope.write(claimed);
             return claimed;
@@ -245,8 +248,8 @@ public final class JobStore implements AutoCloseable {
     private Optional<Job> transitionLeased(Lease lease, UnaryOperator<Job> transition) {
         return rows.inExclusiveScope(scope -> {
             Optional<Job> existing = scope.byId(lease.jobId());
-            // Refuse writes from a worker (or an earlier attempt) whose lease was reclaimed while
-            // it was still running.
+            // Refuse writes from a worker (or an earlier claim) whose lease was reclaimed while it
+            // was still running.
             if (existing.isEmpty() || !existing.get().heldUnder(lease)) {
                 return Optional.<Job>empty();
             }

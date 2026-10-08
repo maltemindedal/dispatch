@@ -26,8 +26,9 @@ One claim round trip: reserve a **Claim budget**, make one **Claim** with it, an
 it took.
 
 **Lease**:
-The exclusivity window on a claimed job, held by one worker for one attempt. Only that attempt may
-record the job's outcome; a result from any other attempt, even the same worker's, is a lost lease.
+The exclusivity window on a claimed job, held by one worker for one **Claim** of it. Every claim
+gives the job a new lease, so only the attempt that claim started may record the job's outcome; a
+result from any other claim, even the same worker's with the same attempt number, is a lost lease.
 _Avoid_: lock (a row lock lasts one transaction; a lease outlives it)
 
 ### Recovery and failure

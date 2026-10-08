@@ -24,6 +24,8 @@ import java.util.UUID;
  * @param updatedAt   time of the most recent transition
  * @param lockedUntil visibility deadline while RUNNING; null in every other state
  * @param lockedBy    id of the worker holding the lease; null in every other state
+ * @param leaseId     id of the claim holding the lease, new for every claim; null in every other
+ *                    state
  * @param lastError   summary of the most recent failure; null if never failed
  */
 public record Job(
@@ -39,6 +41,7 @@ public record Job(
         Instant updatedAt,
         Instant lockedUntil,
         String lockedBy,
+        UUID leaseId,
         String lastError) {
 
     public Job {
@@ -76,6 +79,7 @@ public record Job(
                 now,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -110,35 +114,45 @@ public record Job(
         if (state != JobState.RUNNING) {
             throw new IllegalStateException("Job " + id + " is " + state + " and holds no lease");
         }
-        return new Lease(id, lockedBy, attempt);
+        return new Lease(id, lockedBy, attempt, leaseId);
     }
 
     /**
-     * True while this job is held under {@code lease}: RUNNING, locked by the lease's worker, as
-     * the lease's attempt. Stores check this before recording any result. A worker that stalled
-     * past its visibility timeout must not overwrite whoever took the job over, and neither may an
-     * earlier attempt of the same worker overwrite the attempt that superseded it.
+     * True while this job is held under {@code lease}: RUNNING, under the lease's claim, locked by
+     * the lease's worker, as the lease's attempt. Stores check this before recording any result. A
+     * worker that stalled past its visibility timeout must not overwrite whoever took the job over,
+     * and neither may an earlier claim of the same worker, even one with the same attempt number.
+     *
+     * <p>The lease id alone would tell claims apart. The worker and attempt checks stay for
+     * rolling deploys: an instance that predates lease ids claims without writing one, so a row it
+     * holds can still carry the lease id of an earlier claim.
      */
     public boolean heldUnder(Lease lease) {
         return state == JobState.RUNNING
                 && id.equals(lease.jobId())
+                && lease.leaseId().equals(leaseId)
                 && lease.workerId().equals(lockedBy)
                 && attempt == lease.attempt();
     }
 
-    /** PENDING -> RUNNING: takes a visibility lease and counts the attempt. */
-    public Job claimedBy(String workerId, Instant now, Duration visibilityTimeout) {
+    /**
+     * PENDING -> RUNNING: takes a visibility lease and counts the attempt.
+     *
+     * @param leaseId the claim's own id, new for every claim, so no two claims share a lease
+     */
+    public Job claimedBy(String workerId, UUID leaseId, Instant now, Duration visibilityTimeout) {
         state.requireTransitionTo(JobState.RUNNING);
         return new Job(id, type, payload, priority, maxRetries, attempt + 1, JobState.RUNNING,
                 scheduledAt, createdAt, now, now.plus(visibilityTimeout),
-                Objects.requireNonNull(workerId, "workerId"), lastError);
+                Objects.requireNonNull(workerId, "workerId"),
+                Objects.requireNonNull(leaseId, "leaseId"), lastError);
     }
 
     /** RUNNING -> COMPLETED: releases the lease. */
     public Job completed(Instant now) {
         state.requireTransitionTo(JobState.COMPLETED);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.COMPLETED,
-                scheduledAt, createdAt, now, null, null, lastError);
+                scheduledAt, createdAt, now, null, null, null, lastError);
     }
 
     /**
@@ -149,14 +163,15 @@ public record Job(
     private Job failedWithRetryAt(Instant retryAt, String error, Instant now) {
         state.requireTransitionTo(JobState.FAILED);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.FAILED,
-                Objects.requireNonNull(retryAt, "retryAt"), createdAt, now, null, null, error);
+                Objects.requireNonNull(retryAt, "retryAt"), createdAt, now, null, null, null,
+                error);
     }
 
     /** RUNNING -> DEAD: releases the lease and dead-letters the job. */
     public Job deadLettered(String error, Instant now) {
         state.requireTransitionTo(JobState.DEAD);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.DEAD,
-                scheduledAt, createdAt, now, null, null, error);
+                scheduledAt, createdAt, now, null, null, null, error);
     }
 
     /**
@@ -168,7 +183,7 @@ public record Job(
     public Job leaseExpired(Instant now) {
         state.requireTransitionTo(JobState.PENDING);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.PENDING,
-                now, createdAt, now, null, null,
+                now, createdAt, now, null, null, null,
                 "Visibility timeout expired; job reclaimed from worker " + lockedBy);
     }
 
@@ -211,16 +226,19 @@ public record Job(
     public Job promotedToPending(Instant now) {
         state.requireTransitionTo(JobState.PENDING);
         return new Job(id, type, payload, priority, maxRetries, attempt, JobState.PENDING,
-                scheduledAt, createdAt, now, null, null, lastError);
+                scheduledAt, createdAt, now, null, null, null, lastError);
     }
 
     /**
      * DEAD -> PENDING, on operator request. The retry budget is reset so the retried job gets a
      * full set of attempts rather than dying again on the first stumble.
+     *
+     * <p>The attempt count starts again from 0, so the next claim is attempt 1 again. Its new lease
+     * id is what keeps a stalled earlier attempt 1 from recording over it.
      */
     public Job manuallyRetried(Instant now) {
         state.requireTransitionTo(JobState.PENDING);
         return new Job(id, type, payload, priority, maxRetries, 0, JobState.PENDING,
-                now, createdAt, now, null, null, lastError);
+                now, createdAt, now, null, null, null, lastError);
     }
 }

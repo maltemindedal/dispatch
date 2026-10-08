@@ -19,9 +19,13 @@ import org.slf4j.LoggerFactory;
  * Creates the {@code jobs} table and its indexes if they are not already there.
  *
  * <p>Deliberately not a migration tool. The DDL is idempotent ({@code CREATE ... IF NOT EXISTS}),
- * which is enough for a project that has exactly one schema version, and it keeps the dependency
- * list honest. The moment a second version exists, replace this with Flyway or Liquibase pointed
- * at the same SQL. The statements would not need to change.
+ * and it carries one additive change for tables created before it
+ * ({@code ALTER TABLE ... ADD COLUMN IF NOT EXISTS lease_id}). That is as far as an idempotent
+ * script should go, and it keeps the dependency list honest. The next schema change is the point
+ * to replace this with Flyway or Liquibase pointed at the same SQL.
+ *
+ * <p>The added column needs no entry in the tolerated SQL states. PostgreSQL checks for the column
+ * under the table lock, so a second instance adding it at the same moment waits, then skips.
  *
  * <h2>Why {@code IF NOT EXISTS} is not enough on its own</h2>
  * In PostgreSQL, {@code CREATE TABLE IF NOT EXISTS} is <em>not</em> atomic against concurrent DDL.

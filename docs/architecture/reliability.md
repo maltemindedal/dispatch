@@ -40,14 +40,22 @@ not available to a queue that talks to the outside world, and pretending otherwi
 bug somewhere harder to find.
 
 What the engine *does* guarantee is that a stalled worker cannot corrupt the record: every write
-of a result is conditional on still holding the lease *as the attempt that claimed it* (the row is
-`RUNNING`, `locked_by` is this worker, and `attempt` is the attempt number this worker was handed).
-The claim hands the worker that lease as a value, `Lease`, and `JobStore` records an outcome only
-in exchange for one, so no write can skip the check.
+of a result is conditional on still holding the lease *as the claim that took it* (the row is
+`RUNNING`, `lease_id` is the id this claim was given, `locked_by` is this worker, and `attempt` is
+the attempt number this worker was handed). Every claim gets a fresh lease id, so no two claims
+share a lease. The claim hands the worker that lease as a value, `Lease`, and `JobStore` records an
+outcome only in exchange for one, so no write can skip the check.
 A worker that overran its visibility timeout finds its update rejected, counts a lost lease
 (`leasesLost` in `/stats`), and gets out of the way of whoever took the job over. That includes
 itself: if the same instance reclaims and re-runs the job as attempt 2, attempt 1's late result is
 rejected too, rather than landing on attempt 2.
+
+The attempt number alone would not be enough. A manual retry resets it, so after a stalled last
+attempt is dead-lettered and an operator retries the job, the next claim can be the same worker's
+attempt 1 again. Only the lease id tells the two claims apart, and it is what stops the stalled
+attempt from completing the job, or dead-lettering it again, under the new claim. The worker and
+attempt checks stay as well, for rolling deploys: an instance that predates lease ids claims
+without writing `lease_id`, so a row it holds can still carry an earlier claim's id.
 
 ## Visibility timeout
 

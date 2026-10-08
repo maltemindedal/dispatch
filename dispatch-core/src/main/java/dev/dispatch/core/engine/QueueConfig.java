@@ -155,7 +155,8 @@ public record QueueConfig(
 
     /**
      * Hostname-ish plus a random suffix. The suffix matters: two containers from the same image
-     * would otherwise share a worker id and could steal each other's leases. This is the one
+     * would otherwise share a worker id, and neither {@code lockedBy} nor the logs could tell them
+     * apart. Each claim's lease id keeps their outcomes apart either way. This is the one
      * place worker ids are minted. Code wiring the engine should call it rather than
      * invent its own scheme.
      */

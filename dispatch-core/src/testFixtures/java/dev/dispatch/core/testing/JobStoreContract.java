@@ -311,8 +311,9 @@ public abstract class JobStoreContract {
         @DisplayName("a worker that no longer holds the lease cannot record anything")
         void rejectsForeignWorker() {
             Job job = insertDue();
-            store.claim(WORKER, 1, LEASE, now());
-            Lease foreign = new Lease(job.id(), OTHER_WORKER, 1);
+            Lease held = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
+            // Everything but the worker matches, so this is the worker check on its own.
+            Lease foreign = new Lease(job.id(), OTHER_WORKER, 1, held.leaseId());
 
             assertThat(store.complete(foreign, now())).isEmpty();
             assertThat(store.fail(foreign, "nope", now(), now())).isEmpty();
@@ -358,6 +359,35 @@ public abstract class JobStoreContract {
 
             assertThat(retried.attempt()).isEqualTo(1);
             assertThat(store.complete(retried.lease(), now())).isPresent();
+        }
+
+        @Test
+        @DisplayName("a stalled attempt cannot record over the claim that followed a manual retry, though both are attempt 1 of the same worker")
+        void rejectsAStalledAttemptAfterAManualRetry() {
+            // maxRetries=0, so the sweep dead-letters the stalled attempt rather than return it to
+            // PENDING.
+            Job job = store.insert(new JobSubmission("send-email", "{}", 0, 0, null), now());
+            Lease stalled = store.claim(WORKER, 1, LEASE, now()).get(0).lease();
+            clock.advance(LEASE.plusSeconds(1));
+            assertThat(store.reclaimExpiredLeases(now(), 100)).isEqualTo(1);
+            assertThat(reload(job).state()).isEqualTo(JobState.DEAD);
+            // The manual retry resets the attempt count, so the next claim is attempt 1 again.
+            assertThat(store.retryDeadJob(job.id(), now())).isInstanceOf(JobActionResult.Done.class);
+            Job retried = store.claim(WORKER, 1, LEASE, now()).get(0);
+            assertThat(retried.attempt()).isEqualTo(stalled.attempt());
+            assertThat(retried.lockedBy()).isEqualTo(stalled.workerId());
+
+            assertThat(store.complete(stalled, now())).isEmpty();
+            assertThat(store.fail(stalled, "from the stalled attempt", now(), now())).isEmpty();
+            assertThat(store.deadLetter(stalled, "from the stalled attempt", now())).isEmpty();
+            Job seen = reload(job);
+            assertThat(seen.state()).isEqualTo(JobState.RUNNING);
+            assertThat(seen.lease()).isEqualTo(retried.lease());
+            assertThat(seen.lastError()).doesNotContain("stalled attempt");
+
+            // The claim that actually holds the lease still can.
+            assertThat(store.complete(retried.lease(), now())).isPresent();
+            assertThat(reload(job).state()).isEqualTo(JobState.COMPLETED);
         }
 
         @Test
@@ -429,7 +459,8 @@ public abstract class JobStoreContract {
         void rejectsUnclaimedJob() {
             Job job = insertDue();
 
-            assertThat(store.complete(new Lease(job.id(), WORKER, 1), now())).isEmpty();
+            assertThat(store.complete(new Lease(job.id(), WORKER, 1, UUID.randomUUID()), now()))
+                    .isEmpty();
             assertThat(reload(job).state()).isEqualTo(JobState.PENDING);
         }
     }

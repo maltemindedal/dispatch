@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     updated_at   TIMESTAMP(6) WITH TIME ZONE NOT NULL,
     locked_until TIMESTAMP(6) WITH TIME ZONE,
     locked_by    VARCHAR(255),
+    -- lease_id is deliberately missing here. The ALTER TABLE below adds it.
     last_error   TEXT,
     -- The lifecycle is enforced in the domain model; this keeps the database honest too, so a
     -- stray hand-written UPDATE cannot invent a seventh state.
@@ -25,6 +26,21 @@ CREATE TABLE IF NOT EXISTS jobs (
     ),
     CONSTRAINT jobs_attempt_check CHECK (attempt >= 0 AND max_retries >= 0)
 );
+
+-- The one change since the first schema version, and it only adds. lease_id names the claim that
+-- holds a RUNNING job's lease. It is set at claim and cleared when the lease ends.
+--
+-- CREATE TABLE IF NOT EXISTS never alters a table that is already there, so this statement adds
+-- the column to a table created before it existed and does nothing to one that has it. The column
+-- is kept out of the CREATE TABLE above on purpose. Every table, new or old, then gets it from
+-- this one statement, so the two cannot drift apart, and a new database runs the same statement
+-- an old one does.
+--
+-- Two instances running it at once is safe. PostgreSQL checks for the column under the table
+-- lock, so the second waits for the first, then finds the column and skips.
+--
+-- The next schema change is the point to bring in a migration tool, not a second ALTER here.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_id UUID;
 
 -- Backs the claim query: state first (equality), then the exact ORDER BY the claim uses, so
 -- claiming is an index range scan rather than a sort over the whole table.

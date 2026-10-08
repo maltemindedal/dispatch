@@ -16,8 +16,11 @@ This is a list of what the system does not do, in roughly the order to fix it.
    `DELETE FROM jobs WHERE state = 'COMPLETED' AND updated_at < now() - interval '7 days'` on a
    schedule, or partitioning by month. It also bounds the cost of `GET /stats`, which counts every
    retained row (tens of milliseconds at a million rows) on every call.
-4. **Schema is applied by an idempotent DDL script**, not a migration tool. Fine for one schema
-   version; swap in Flyway the moment there's a second.
+4. **Schema is applied by an idempotent DDL script**, not a migration tool. The script now
+   carries one additive, idempotent change: `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_id`,
+   which upgrades a table created before the column existed and does nothing to one that has it.
+   That is as far as an idempotent script should go. The next schema change is the point to bring
+   in a migration tool such as Flyway.
 5. **`payload` is `TEXT`, not `jsonb`.** Portable to H2, but it gives up indexing and querying
    inside payloads on PostgreSQL.
 6. **The claim index is a portable composite** `(state, priority DESC, scheduled_at, created_at)`.

@@ -29,7 +29,7 @@ dispatch:
   store: jdbc
 
   # Blank means "generate a unique one at startup". Set this only if you have a stable per-replica
-  # identity; two instances sharing a worker id can release each other's leases.
+  # identity, and keep it unique: instances sharing one look the same in locked_by and the logs.
   worker-id: ""
 
   concurrency: 16
