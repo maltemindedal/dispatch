@@ -99,12 +99,6 @@ public final class JdbcJobRows implements JobRows {
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
     }
 
-    /** Convenience: apply the schema, then build a store over the same DataSource. */
-    public static JobStore createAndInitializeSchema(DataSource dataSource) {
-        JobSchema.initialize(dataSource);
-        return JobStore.over(new JdbcJobRows(dataSource));
-    }
-
     /**
      * Runs {@code work} in one transaction, committing on success and rolling back on any failure.
      * Explicit transactions are not optional here: {@code FOR UPDATE} row locks live and die with
