@@ -36,4 +36,5 @@ Both behaviors remain because they answer different questions. The engine owns b
   ever is, the submission-time guard is the single place to revisit.
 - Future architecture reviews should not flag the submit-refuse / execute-retry pair as a
   contradiction: it is one policy about two different moments, owned by `JobQueue.submit` and
-  `WorkerPool.recordFailure` respectively, and both sides reference this ADR.
+  `AttemptRunner.recordFailure` respectively, and both sides reference this ADR.
+  `AttemptRunner` runs each job that `WorkerPool` claims.
