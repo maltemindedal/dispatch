@@ -13,7 +13,7 @@ exactly one place, and `application.yml` restates them.
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `store` | `jdbc` \| `memory` | `jdbc` | Which `JobStore` backs the queue. `memory` is process-local, lost on restart, and logs a warning to that effect. |
-| `worker-id` | string | `""` (generate) | This instance's identity in `locked_by`. Blank means "generate a unique one at startup" (hostname-ish plus random suffix), which is useful in containers. If set, keep it unique per process. Every claim has its own lease id, so instances sharing an id cannot record over each other's claims, but `locked_by` and the logs can no longer tell them apart. |
+| `worker-id` | string | `""` (generate) | This instance's identity in `locked_by`. Blank means "generate a unique one at startup" (hostname-ish plus random suffix), which is useful in containers. If set, keep it unique per process. `locked_by` and the logs cannot tell instances that share an id apart. Every lease has its own id, so instances of this version cannot record over each other's leases even then, but an instance from before lease ids, still running during a rolling deploy, can. |
 | `concurrency` | int ≥ 1 | `16` | Maximum jobs in flight on this instance. Also sizes the claim-capacity gate, so the engine never claims work it has no room to run. |
 | `claim-batch-size` | int ≥ 1 | `8` | Jobs claimed per database round trip. |
 | `poll-interval` | duration | `250ms` | How long an idle dispatcher parks before polling again. Submissions on this instance wake it early, so this only bounds the pickup latency of work created elsewhere. |

@@ -27,8 +27,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     CONSTRAINT jobs_attempt_check CHECK (attempt >= 0 AND max_retries >= 0)
 );
 
--- The one change since the first schema version, and it only adds. lease_id names the claim that
--- holds a RUNNING job's lease. It is set at claim and cleared when the lease ends.
+-- The one change since the first schema version, and it only adds. lease_id is the id of a RUNNING
+-- job's lease, drawn fresh each time a claim takes the job. This version sets it at claim and
+-- clears it when the lease ends. An instance that predates it does not write it at all.
 --
 -- CREATE TABLE IF NOT EXISTS never alters a table that is already there, so this statement adds
 -- the column to a table created before it existed and does nothing to one that has it. The column

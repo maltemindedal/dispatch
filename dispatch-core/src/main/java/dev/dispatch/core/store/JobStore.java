@@ -45,7 +45,7 @@ import java.util.function.UnaryOperator;
  *       {@link Lease} the claim handed out, apply only while the job is still held under it, and
  *       return {@link Optional#empty()} otherwise. That is what stops a worker that stalled past
  *       its visibility timeout from stomping on whoever legitimately took the job over, including
- *       that same worker's own later attempt. Every claim gets a new lease id, so this holds even
+ *       that same worker's own later attempt. Every lease gets a new id, so this holds even
  *       when a manual retry makes the later claim attempt 1 again. There is no way to record an
  *       outcome without a lease, so there is no way to skip the check.</li>
  *   <li><b>Atomic transitions.</b> Each method is a single atomic unit against concurrent
@@ -120,7 +120,7 @@ public final class JobStore implements AutoCloseable {
      * Atomically takes up to {@code limit} claimable jobs that match
      * {@link JobSelection#CLAIMABLE},
      * moving each to RUNNING with a lease held by {@code workerId} until
-     * {@code now + visibilityTimeout}. Each job gets a new lease id, so no two claims share a lease.
+     * {@code now + visibilityTimeout}. Each job gets a lease with a new id, so no two leases share one.
      *
      * @return the claimed jobs in execution order, possibly empty, never null
      */

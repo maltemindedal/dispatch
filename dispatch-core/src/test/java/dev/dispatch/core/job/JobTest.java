@@ -157,7 +157,21 @@ class JobTest {
     }
 
     @Test
-    @DisplayName("only a running job carries a lease id, and every way out of RUNNING clears it")
+    @DisplayName("a running row an instance from before lease ids claimed holds no lease to record under")
+    void runningRowWithoutALeaseIdHoldsNoLease() {
+        // How such a row reads back: RUNNING, locked by its worker, and no lease_id.
+        Job claimedByAnOlderInstance = new Job(UUID.randomUUID(), "send-email", "{}", 0, 3, 1,
+                JobState.RUNNING, NOW, NOW, NOW, NOW.plus(LEASE), "old-worker", null, null);
+
+        assertThatThrownBy(claimedByAnOlderInstance::lease)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("predates lease ids");
+        assertThat(claimedByAnOlderInstance.heldUnder(new Lease(
+                claimedByAnOlderInstance.id(), "old-worker", 1, UUID.randomUUID()))).isFalse();
+    }
+
+    @Test
+    @DisplayName("a claim sets the lease id, and every transition out of RUNNING clears it")
     void onlyARunningJobCarriesALeaseId() {
         Job pending = pendingJob(3);
         assertThat(pending.leaseId()).isNull();
@@ -253,11 +267,11 @@ class JobTest {
                 .claimedBy("worker-1", UUID.randomUUID(), NOW.plus(LEASE), LEASE);
 
         assertThat(first.heldUnder(first.lease())).isTrue();
-        // Same job, worker and attempt under another claim is another lease.
+        // Same job, worker and attempt under another lease id is another lease.
         assertThat(first.heldUnder(new Lease(first.id(), "worker-1", 1, UUID.randomUUID())))
                 .isFalse();
         // The worker and attempt still count on their own. A row that an instance predating lease
-        // ids claimed can keep an earlier claim's lease id.
+        // ids claimed can keep an earlier lease's id.
         assertThat(first.heldUnder(new Lease(first.id(), "worker-2", 1, first.leaseId()))).isFalse();
         assertThat(first.heldUnder(new Lease(first.id(), "worker-1", 2, first.leaseId()))).isFalse();
         // The same worker holds both, which is exactly why the lease carries the attempt.

@@ -25,8 +25,10 @@ import java.util.UUID;
  * @param updatedAt   time of the most recent transition
  * @param lockedUntil visibility deadline while RUNNING; null in every other state
  * @param lockedBy    id of the worker holding the lease; null in every other state
- * @param leaseId     id of the claim holding the lease, new for every claim; null in every other
- *                    state
+ * @param leaseId     id of the lease while RUNNING, drawn fresh each time a claim takes the job;
+ *                    null in every other state this version writes. An instance that predates
+ *                    lease ids does not write it, so a row such an instance moved on may keep a
+ *                    stale one, and a RUNNING row it claimed may have none
  * @param lastError   summary of the most recent failure; null if never failed
  */
 public record Job(
@@ -109,17 +111,22 @@ public record Job(
      * The lease this job is held under. Every job a claim returns is RUNNING, so the worker records
      * the attempt's outcome with {@code claimed.lease()}.
      *
-     * @throws IllegalStateException in every state but RUNNING, where nobody holds a lease
+     * @throws IllegalStateException in every state but RUNNING, where nobody holds a lease, and on
+     *         a RUNNING row an instance that predates lease ids claimed, which carries no lease id
      */
     public Lease lease() {
         if (state != JobState.RUNNING) {
             throw new IllegalStateException("Job " + id + " is " + state + " and holds no lease");
         }
+        if (leaseId == null) {
+            throw new IllegalStateException("Job " + id + " is RUNNING without a lease id: an "
+                    + "instance that predates lease ids claimed it");
+        }
         return new Lease(id, lockedBy, attempt, leaseId);
     }
 
     /**
-     * True while this job is held under {@code lease}: RUNNING, under the lease's claim, locked by
+     * True while this job is held under {@code lease}: RUNNING, under the lease's id, locked by
      * the lease's worker, as the lease's attempt. Stores check this before recording any result. A
      * worker that stalled past its visibility timeout must not overwrite whoever took the job over,
      * and neither may an earlier claim of the same worker, even one with the same attempt number.
@@ -139,7 +146,8 @@ public record Job(
     /**
      * PENDING -> RUNNING: takes a visibility lease and counts the attempt.
      *
-     * @param leaseId the claim's own id, new for every claim, so no two claims share a lease
+     * @param leaseId the id of the lease this claim takes, new every time, so no two leases share
+     *                one
      */
     public Job claimedBy(String workerId, UUID leaseId, Instant now, Duration visibilityTimeout) {
         state.requireTransitionTo(JobState.RUNNING);
