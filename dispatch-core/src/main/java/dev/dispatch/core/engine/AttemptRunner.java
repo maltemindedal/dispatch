@@ -64,8 +64,9 @@ final class AttemptRunner {
 
     /**
      * Runs the handler for {@code job}, a snapshot a claim returned, and records the outcome under
-     * its lease. If the store fails while recording, that is logged rather than thrown, and the job
-     * stays RUNNING until its lease expires.
+     * its lease. If the store fails while recording, the job stays RUNNING until its lease expires.
+     * A RuntimeException from the store is logged. An Error is not caught here: it ends this
+     * thread once the interrupt flag and the metrics are put right.
      */
     void run(Job job) {
         long startNanos = System.nanoTime();
@@ -78,22 +79,23 @@ final class AttemptRunner {
         // return, are common enough that the engine cannot assume otherwise.
         boolean interrupted = false;
         try {
-            JobHandler handler = registry.require(job.type());
-            handler.handle(new JobContext(job, config.workerId()));
-            interrupted = Thread.interrupted();
-            recordSuccess(job);
-        } catch (PermanentJobFailureException e) {
-            interrupted |= Thread.interrupted();
-            // The capped description, as stored: a handler's message can be arbitrarily long.
-            String error = describe(e);
-            log.warn("Job {} ({}) failed permanently on attempt {}: {}",
-                    job.id(), job.type(), job.attempt(), error);
-            metrics.attemptFailed();
-            recordDeadLetter(job, error);
-        } catch (Throwable t) {
-            interrupted |= Thread.interrupted() || t instanceof InterruptedException;
-            metrics.attemptFailed();
-            recordFailure(job, t);
+            Throwable failure = runHandler(job);
+            interrupted = Thread.interrupted() || failure instanceof InterruptedException;
+            // Recorded outside the handler's catch, so a store that fails while recording, with an
+            // Error included, is never taken for the handler failing.
+            if (failure == null) {
+                recordSuccess(job);
+            } else if (failure instanceof PermanentJobFailureException) {
+                // The capped description, as stored: a handler's message can be arbitrarily long.
+                String error = describe(failure);
+                log.warn("Job {} ({}) failed permanently on attempt {}: {}",
+                        job.id(), job.type(), job.attempt(), error);
+                metrics.attemptFailed();
+                recordDeadLetter(job, error);
+            } else {
+                metrics.attemptFailed();
+                recordFailure(job, failure);
+            }
         } finally {
             if (interrupted) {
                 // Shutdown passed its drain deadline and interrupted us, or the handler did. The
@@ -102,6 +104,21 @@ final class AttemptRunner {
                 Thread.currentThread().interrupt();
             }
             metrics.jobFinished(Duration.ofNanos(System.nanoTime() - startNanos));
+        }
+    }
+
+    /**
+     * Looks up the handler and runs it. A missing handler counts as the handler failing.
+     *
+     * @return what the handler threw, or null if it returned normally
+     */
+    private Throwable runHandler(Job job) {
+        try {
+            JobHandler handler = registry.require(job.type());
+            handler.handle(new JobContext(job, config.workerId()));
+            return null;
+        } catch (Throwable t) {
+            return t;
         }
     }
 
