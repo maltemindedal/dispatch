@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobSubmission;
-import dev.dispatch.core.job.Lease;
 import dev.dispatch.core.store.JobStore;
 import java.io.IOException;
 import java.net.URI;
@@ -448,12 +447,14 @@ class RestContractTest {
 
     /**
      * Buries a job by hand: claim it, then dead-letter it. Only possible because no dispatcher
-     * is competing for the row.
+     * is competing for the row. Fails rather than bury some other job, if one is due first.
      */
     private Job deadJob(int maxRetries) {
-        store.insert(new JobSubmission("send-email", "{}", 0, maxRetries, PAST), Instant.now());
-        Lease lease = store.claim(WORKER, 1, Duration.ofMinutes(5), Instant.now()).get(0).lease();
-        return store.deadLetter(lease, "boom", Instant.now()).orElseThrow();
+        Job job = store.insert(new JobSubmission("send-email", "{}", 0, maxRetries, PAST),
+                Instant.now());
+        Job claimed = store.claim(WORKER, 1, Duration.ofMinutes(5), Instant.now()).get(0);
+        assertThat(claimed.id()).as("the claim took the job just inserted").isEqualTo(job.id());
+        return store.deadLetter(claimed.lease(), "boom", Instant.now()).orElseThrow();
     }
 
     private void assertProblem(
