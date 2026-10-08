@@ -110,17 +110,20 @@ class JobTest {
     }
 
     @Test
-    @DisplayName("the lease is held only by the claiming worker, and only while RUNNING")
-    void leaseHeldByClaimingWorkerOnly() {
+    @DisplayName("a claimed job carries its lease, and a job nobody holds has none")
+    void claimedJobCarriesItsLease() {
         Job pending = pendingJob(3);
-        assertThat(pending.leaseHeldBy("worker-1")).isFalse();
+        assertThatThrownBy(pending::lease)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("PENDING");
 
         Job running = pending.claimedBy("worker-1", NOW, LEASE);
-        assertThat(running.leaseHeldBy("worker-1")).isTrue();
-        assertThat(running.leaseHeldBy("worker-2")).isFalse();
+        assertThat(running.lease()).isEqualTo(new Lease(running.id(), "worker-1", 1));
 
-        assertThat(running.completed(NOW).leaseHeldBy("worker-1")).isFalse();
-        assertThat(running.leaseExpired(NOW.plus(LEASE)).leaseHeldBy("worker-1")).isFalse();
+        assertThatThrownBy(() -> running.completed(NOW).lease())
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> running.leaseExpired(NOW.plus(LEASE)).lease())
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -195,19 +198,32 @@ class JobTest {
     }
 
     @Test
-    @DisplayName("a lease is held by a worker as a particular attempt")
-    void leaseHeldByWorkerAndAttempt() {
+    @DisplayName("a job is held under the lease of its current attempt and no other")
+    void heldUnderTheCurrentLeaseOnly() {
         Job first = pendingJob(3).claimedBy("worker-1", NOW, LEASE);
         Job second = first.leaseExpired(NOW.plus(LEASE)).claimedBy("worker-1", NOW.plus(LEASE), LEASE);
 
-        assertThat(first.leaseHeldBy("worker-1", 1)).isTrue();
-        assertThat(first.leaseHeldBy("worker-1", 2)).isFalse();
-        assertThat(first.leaseHeldBy("worker-2", 1)).isFalse();
-        // The same worker holds both, which is exactly why the worker id alone cannot tell them apart.
-        assertThat(second.leaseHeldBy("worker-1")).isTrue();
-        assertThat(second.leaseHeldBy("worker-1", 2)).isTrue();
-        assertThat(second.leaseHeldBy("worker-1", 1)).isFalse();
-        assertThat(second.completed(NOW).leaseHeldBy("worker-1", 2)).isFalse();
+        assertThat(first.heldUnder(first.lease())).isTrue();
+        assertThat(first.heldUnder(new Lease(first.id(), "worker-2", 1))).isFalse();
+        // The same worker holds both, which is exactly why the lease carries the attempt.
+        assertThat(second.heldUnder(second.lease())).isTrue();
+        assertThat(second.heldUnder(first.lease())).isFalse();
+        assertThat(second.completed(NOW).heldUnder(second.lease())).isFalse();
+        // The same worker and attempt on another job is another lease.
+        Job otherJob = pendingJob(3).claimedBy("worker-1", NOW, LEASE);
+        assertThat(otherJob.heldUnder(first.lease())).isFalse();
+    }
+
+    @Test
+    @DisplayName("a lease names a job, a worker and an attempt of at least 1")
+    void leaseRequiresItsParts() {
+        UUID id = UUID.randomUUID();
+
+        assertThatThrownBy(() -> new Lease(null, "w", 1)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new Lease(id, null, 1)).isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> new Lease(id, "w", 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("attempt");
     }
 
     @Test

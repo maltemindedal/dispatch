@@ -101,24 +101,29 @@ public record Job(
     }
 
     /**
-     * True while {@code workerId} holds this job's visibility lease. It says nothing about
-     * <em>which attempt</em> holds it: the same worker that lost a lease and claimed the job again
-     * satisfies this for the old attempt and the new one alike. Recording an outcome therefore
-     * uses {@link #leaseHeldBy(String, int)}.
+     * The lease this job is held under. Every job a claim returns is RUNNING, so the worker records
+     * the attempt's outcome with {@code claimed.lease()}.
+     *
+     * @throws IllegalStateException in every state but RUNNING, where nobody holds a lease
      */
-    public boolean leaseHeldBy(String workerId) {
-        return state == JobState.RUNNING && workerId.equals(lockedBy);
+    public Lease lease() {
+        if (state != JobState.RUNNING) {
+            throw new IllegalStateException("Job " + id + " is " + state + " and holds no lease");
+        }
+        return new Lease(id, lockedBy, attempt);
     }
 
     /**
-     * True while {@code workerId} holds this job's visibility lease <em>as attempt
-     * {@code attempt}</em>. Stores check this before recording any result: a worker that stalled
+     * True while this job is held under {@code lease}: RUNNING, locked by the lease's worker, as
+     * the lease's attempt. Stores check this before recording any result. A worker that stalled
      * past its visibility timeout must not overwrite whoever took the job over, and neither may an
-     * earlier attempt of the same worker overwrite the attempt that superseded it. The attempt
-     * number is the one on the snapshot the claim returned.
+     * earlier attempt of the same worker overwrite the attempt that superseded it.
      */
-    public boolean leaseHeldBy(String workerId, int attempt) {
-        return leaseHeldBy(workerId) && this.attempt == attempt;
+    public boolean heldUnder(Lease lease) {
+        return state == JobState.RUNNING
+                && id.equals(lease.jobId())
+                && lease.workerId().equals(lockedBy)
+                && attempt == lease.attempt();
     }
 
     /** PENDING -> RUNNING: takes a visibility lease and counts the attempt. */

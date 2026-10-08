@@ -120,7 +120,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   | Invariant | Guarded by |
   | --- | --- |
   | `JobRows.inExclusiveScope` is atomic across threads and processes; the JDBC scope rolls back on any `Throwable`, `Error` included | `JdbcScopeAtomicityTest` subclasses |
-  | Outcome writes are fenced by worker and attempt: call the `complete`, `fail` and `deadLetter` overloads that take the attempt | `StaleAttemptOutcomeTest` |
+  | Outcome writes are fenced by worker and attempt: `complete`, `fail` and `deadLetter` take the `Lease` on the claimed snapshot (`job.lease()`), so there is no unfenced form | `StaleAttemptOutcomeTest` |
   | Claim permits are conserved: reserve before claiming, return unused ones at once and owed ones in `finally`; claim only what there is room to run, since a claimed job is invisible to peers until its lease expires | `ClaimCapacityTest`, `WorkerPoolShutdownTest` |
   | The interrupt flag is cleared while an outcome is recorded, since JDBC on an interrupted thread fails | `InterruptedOutcomeTest` |
   | The dispatcher and sweeper survive any `Throwable` from the store and back off one poll interval | `BackgroundErrorResilienceTest` |

@@ -7,6 +7,7 @@ import dev.dispatch.core.handler.InMemoryJobHandlerRegistry;
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobState;
 import dev.dispatch.core.job.JobSubmission;
+import dev.dispatch.core.job.Lease;
 import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.MutableClock;
 import java.time.Duration;
@@ -150,7 +151,8 @@ class VisibilityTimeoutTest {
     @DisplayName("a worker that comes back after losing its lease cannot record a result")
     void zombieWorkerIsIgnored() {
         Job job = store.insert(new JobSubmission("record", "zombie", 0, 3, null), clock.instant());
-        store.claim("stalled-worker", 1, VISIBILITY_TIMEOUT, clock.instant());
+        Lease stalled = store.claim("stalled-worker", 1, VISIBILITY_TIMEOUT, clock.instant())
+                .get(0).lease();
 
         startQueue();
         clock.advance(VISIBILITY_TIMEOUT.plusSeconds(1));
@@ -160,7 +162,7 @@ class VisibilityTimeoutTest {
 
         // The stalled worker finally finishes and tries to report. Too late: it lost the lease,
         // and letting it write now would clobber the result that actually happened.
-        assertThat(store.complete(job.id(), "stalled-worker", 1, clock.instant())).isEmpty();
+        assertThat(store.complete(stalled, clock.instant())).isEmpty();
         assertThat(store.find(job.id()).orElseThrow().state()).isEqualTo(JobState.COMPLETED);
     }
 

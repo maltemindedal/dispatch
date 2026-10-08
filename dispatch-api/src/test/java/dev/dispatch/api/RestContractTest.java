@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobSubmission;
+import dev.dispatch.core.job.Lease;
 import dev.dispatch.core.store.JobStore;
 import java.io.IOException;
 import java.net.URI;
@@ -450,10 +451,9 @@ class RestContractTest {
      * is competing for the row.
      */
     private Job deadJob(int maxRetries) {
-        Job job = store.insert(new JobSubmission("send-email", "{}", 0, maxRetries, PAST),
-                Instant.now());
-        store.claim(WORKER, 1, Duration.ofMinutes(5), Instant.now());
-        return store.deadLetter(job.id(), WORKER, 1, "boom", Instant.now()).orElseThrow();
+        store.insert(new JobSubmission("send-email", "{}", 0, maxRetries, PAST), Instant.now());
+        Lease lease = store.claim(WORKER, 1, Duration.ofMinutes(5), Instant.now()).get(0).lease();
+        return store.deadLetter(lease, "boom", Instant.now()).orElseThrow();
     }
 
     private void assertProblem(

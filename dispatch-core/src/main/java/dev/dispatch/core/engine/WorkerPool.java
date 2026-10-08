@@ -363,7 +363,7 @@ public final class WorkerPool implements AutoCloseable {
 
     private void recordSuccess(Job job) {
         try {
-            if (store.complete(job.id(), config.workerId(), job.attempt(), clock.instant()).isPresent()) {
+            if (store.complete(job.lease(), clock.instant()).isPresent()) {
                 metrics.jobSucceeded();
                 log.debug("Job {} ({}) completed on attempt {}", job.id(), job.type(), job.attempt());
             } else {
@@ -400,7 +400,7 @@ public final class WorkerPool implements AutoCloseable {
             Instant now = clock.instant();
             Duration backoff = retryPolicy.backoffAfter(job.attempt());
             Instant retryAt = now.plus(backoff);
-            if (store.fail(job.id(), config.workerId(), job.attempt(), error, retryAt, now).isPresent()) {
+            if (store.fail(job.lease(), error, retryAt, now).isPresent()) {
                 metrics.retryScheduled();
                 log.debug("Job {} retry {} scheduled in {}", job.id(), job.attempt() + 1, backoff);
             } else {
@@ -415,7 +415,7 @@ public final class WorkerPool implements AutoCloseable {
 
     private void recordDeadLetter(Job job, String error) {
         try {
-            if (store.deadLetter(job.id(), config.workerId(), job.attempt(), error, clock.instant()).isPresent()) {
+            if (store.deadLetter(job.lease(), error, clock.instant()).isPresent()) {
                 metrics.jobDeadLettered();
                 log.error("Job {} ({}) dead-lettered after {} attempt(s): {}",
                         job.id(), job.type(), job.attempt(), error);
