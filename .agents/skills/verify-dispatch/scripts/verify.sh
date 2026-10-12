@@ -62,7 +62,7 @@ core_test() {
 }
 
 build() {
-  if ! docker_ok; then echo "  SKIP build: ./gradlew build needs a Docker daemon for the Testcontainers tests in dispatch-postgres and dispatch-api"; SKIPPED=1; return; fi
+  if ! docker_ok; then echo "  SKIP build: no Docker daemon, so ./gradlew build did not run. The dispatch-api unit tests and all dispatch-postgres tests are skipped; only the dispatch-core tests (core-test) ran"; SKIPPED=1; return; fi
   run build ./gradlew --no-daemon build || FAILED=1
   expect "./gradlew build passes (CI's whole gate)" "$ART/build.exit" "^0$"
 }
@@ -70,10 +70,14 @@ build() {
 launch() {
   if [ -s "$ART/app.pid" ] && kill -0 "$(cat "$ART/app.pid")" 2>/dev/null; then echo "  FAIL an app from this run is already up; run stop first"; FAILED=1; return 1; fi
   run bootjar ./gradlew --no-daemon -q :dispatch-api:bootJar || { echo "  FAIL bootJar failed"; FAILED=1; return 1; }
-  local jar; jar="$(ls dispatch-api/build/libs/*.jar | grep -v plain | head -1)"
+  local ver jar
+  ver="$(sed -n 's/^ *version = "\(.*\)"/\1/p' build.gradle.kts | head -1)"
+  jar="dispatch-api/build/libs/dispatch-api-$ver.jar"
+  [ -f "$jar" ] || { echo "  FAIL bootJar output $jar not found (version '$ver' from build.gradle.kts)"; FAILED=1; return 1; }
+  echo "$jar" > "$ART/app.jar"
   local p; p="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')"
   echo "$p" > "$ART/app.port"
-  java -jar "$jar" --server.port="$p" --server.address=127.0.0.1 > "$ART/app.log" 2>&1 &
+  java -jar "$jar" --spring.profiles.active=dev --server.port="$p" --server.address=127.0.0.1 > "$ART/app.log" 2>&1 &
   echo $! > "$ART/app.pid"
   local i
   for i in $(seq 1 120); do

@@ -15,7 +15,7 @@ Each step prints `PASS`/`FAIL`/`SKIP` lines and ends with `RESULT: PASS`, `RESUL
 
 ## Launch
 
-`verify.sh launch` runs `./gradlew :dispatch-api:bootJar`. It starts the jar with `--server.port=<free port> --server.address=127.0.0.1` on the default `dev` profile, which uses in-memory H2 and needs no Docker. The app is ready when `app.log` shows `Started JobQueueApplication` and `GET /stats` returns 200. The PID goes in `app.pid` and the port in `app.port`. Every launch has a fresh in-memory database, so runs never share state. Teardown is `verify.sh stop` (SIGTERM, which drives graceful shutdown).
+`verify.sh launch` runs `./gradlew :dispatch-api:bootJar`. It starts the jar with `--server.port=<free port> --server.address=127.0.0.1` with `--spring.profiles.active=dev`, which uses in-memory H2 and needs no Docker. The app is ready when `app.log` shows `Started JobQueueApplication` and `GET /stats` returns 200. The PID goes in `app.pid` and the port in `app.port`. Every launch has a fresh in-memory database, so runs never share state. Teardown is `verify.sh stop` (SIGTERM, which drives graceful shutdown).
 
 The `postgres` profile (`docker compose up -d`) is not driven. The compose file publishes the fixed port 5432 with a named volume, so it is a shared instance. Claim contention is proven only by the PostgreSQL Testcontainers tests that `build` runs.
 
@@ -26,7 +26,7 @@ The `postgres` profile (`docker compose up -d`) is not driven. The compose file 
 ## Drive
 
 - `core-test` runs `./gradlew :dispatch-core:test`, the engine tests, which need no Docker.
-- `build` runs `./gradlew build`, CI's whole gate: `-Xlint:all -Werror` and every test, the Testcontainers ones included. It SKIPs without a Docker daemon, because those tests fail rather than skip without it.
+- `build` runs `./gradlew build`, CI's whole gate: `-Xlint:all -Werror` and every test, the Testcontainers ones included. It SKIPs without a Docker daemon, because those tests fail rather than skip without it. A SKIP means the dispatch-api unit tests and all dispatch-postgres tests did not run.
 - `submit` checks a single job end to end:
   - `POST /jobs` with `resize-image` returns 201, and polling `GET /jobs/{id}` sees `state` reach `COMPLETED`.
   - An unknown type returns 422.
