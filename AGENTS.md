@@ -133,6 +133,16 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   | `JobQueue` starts the pool before the sweeper; Spring starts the queue on `ApplicationReadyEvent` | `JobQueueLifecycleRaceTest`, `QueueStartupTest` |
   | `Scope.matching` skips locked rows; `Scope.byId` waits for them, so an operator action answers about the real state | the skipping side by `ConcurrentInstancesIntegrationTest`; nothing tests the waiting |
 
+## Agent skills
+
+`.agents/skills/` holds only skills written for this repo.
+
+- `verify-dispatch` launches its own app (dev profile, H2) on a free loopback port and drives the REST
+  API: submit to COMPLETED, validation refusals, dead letter and retry, schedule and cancel. It also
+  runs `:dispatch-core:test` and, with Docker, `./gradlew build`. Run
+  `.agents/skills/verify-dispatch/scripts/verify.sh all` and read its exit status. Evidence goes to
+  `/tmp/dispatch-verify/<run>/`.
+
 ## Docs
 
 When a doc and the code disagree, the code wins and the doc has the bug (`docs/README.md`).
