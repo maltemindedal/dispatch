@@ -78,9 +78,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 
 ### Prose, commits and PRs
 
-- Use the terms in `GLOSSARY.md`, and none of its _Avoid_ words, in code, docs and commit messages.
-  Read it before naming anything to do with claims, leases, sweeps or retries; PR #10 renamed code
-  to match it.
+- In code, docs, and commit messages, use claim, lease, sweep, dead letter, manual retry, and
+  selection. Do not use dequeue, lock, reaper, dead-letter queue, revive, requeue, or filter for
+  those names.
 - Write docs, Javadoc and comments in plain, short sentences with no em dashes: the owner removed
   all 216 in `ffca785`.
 - Commit subjects are imperative and sentence case, with no Conventional Commits prefix. The body
