@@ -160,3 +160,13 @@ When a doc and the code disagree, the code wins and the doc has the bug (`docs/R
 - Before treating missing auth or a duplicate run as a bug: the Scope section of `SECURITY.md`.
 - To reproduce multi-instance claiming or crash recovery by hand:
   `docs/guides/running-multiple-instances.md`.
+
+## Cursor Cloud specific instructions
+
+`.cursor/install.sh` installs Docker and warms the Gradle distribution named in
+`gradle/wrapper/gradle-wrapper.properties`. It keeps a JDK 21 already on PATH. It downloads
+Temurin 21 only when `java` is not 21, and it checks that archive against the checksum Adoptium
+publishes for the same build. It does not set a Docker storage driver. `.cursor/start.sh` starts
+`dockerd`, because this VM has no systemd. `.agents/skills/verify-dispatch/scripts/verify.sh all`
+is the gate. With Docker the script prints `RESULT: PASS`. Without a Docker daemon the build step
+is an honest SKIP and the script prints `RESULT: PASS with SKIP`.

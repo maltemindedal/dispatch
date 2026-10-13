@@ -13,17 +13,36 @@ jdk21_on_path() {
   [[ "$v" == *'"21.'* ]]
 }
 
+adoptium_arch() {
+  case "$(uname -m)" in
+    x86_64) printf '%s\n' x64 ;;
+    aarch64|arm64) printf '%s\n' aarch64 ;;
+    *)
+      echo "unsupported architecture $(uname -m)" >&2
+      return 1
+      ;;
+  esac
+}
+
 install_temurin21() {
   if [ -x /usr/local/lib/temurin-21/bin/java ]; then
     sudo ln -sfn /usr/local/lib/temurin-21/bin/java /usr/local/bin/java
     sudo ln -sfn /usr/local/lib/temurin-21/bin/javac /usr/local/bin/javac
     return
   fi
-  local tmp extracted
+  local arch tmp link sum extracted
+  arch="$(adoptium_arch)"
   tmp="$(mktemp -d)"
   curl --retry 3 --retry-delay 5 -fsSL \
-    "https://api.adoptium.net/v3/binary/latest/21/ga/linux/x64/jdk/hotspot/normal/eclipse?project=jdk" \
-    -o "$tmp/jdk.tar.gz"
+    "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=${arch}&image_type=jdk&os=linux&vendor=eclipse" \
+    -o "$tmp/assets.json"
+  read -r link sum < <(python3 -c '
+import json, sys
+pkg = json.load(open(sys.argv[1]))[0]["binary"]["package"]
+print(pkg["link"], pkg["checksum"])
+' "$tmp/assets.json")
+  curl --retry 3 --retry-delay 5 -fsSL "$link" -o "$tmp/jdk.tar.gz"
+  printf '%s  %s\n' "$sum" "$tmp/jdk.tar.gz" | sha256sum -c -
   sudo mkdir -p /usr/local/lib
   sudo tar -xzf "$tmp/jdk.tar.gz" -C /usr/local/lib
   extracted="$(echo /usr/local/lib/jdk-21*)"
@@ -81,31 +100,26 @@ configure_docker() {
   sudo mkdir -p /etc/docker
   # The socket group is ubuntu so the agent user can open it without a new login.
   # Testcontainers talks to the socket from the JVM, not through a sudo wrapper.
-  local desired
-  desired='{
-  "group": "ubuntu"
-}'
-  if [ "$(cat /etc/docker/daemon.json 2>/dev/null || true)" != "$desired" ]; then
-    printf '%s\n' "$desired" | sudo tee /etc/docker/daemon.json >/dev/null
+  if ! getent group ubuntu >/dev/null; then
+    echo "group ubuntu does not exist" >&2
+    exit 1
   fi
-}
-
-stop_docker() {
-  if [ -f /var/run/docker.pid ]; then
-    sudo kill "$(cat /var/run/docker.pid)" 2>/dev/null || true
-  fi
-  if [ -f /run/containerd/containerd.pid ]; then
-    sudo kill "$(cat /run/containerd/containerd.pid)" 2>/dev/null || true
-  fi
-  local i
-  for i in $(seq 1 30); do
-    if ! pgrep -x dockerd >/dev/null 2>&1 && ! pgrep -x containerd >/dev/null 2>&1; then
-      break
-    fi
-    sleep 0.5
-  done
-  sudo rm -f /var/run/docker.pid /var/run/docker.sock
-  sudo rm -f /run/containerd/containerd.pid
+  local raw merged
+  raw="$(sudo cat /etc/docker/daemon.json 2>/dev/null || true)"
+  merged="$(printf '%s' "$raw" | python3 -c '
+import json, sys
+raw = sys.stdin.read()
+if raw.strip():
+    cfg = json.loads(raw)
+    if not isinstance(cfg, dict):
+        raise SystemExit("daemon.json must be a JSON object")
+else:
+    cfg = {}
+cfg["group"] = "ubuntu"
+json.dump(cfg, sys.stdout, indent=2)
+sys.stdout.write("\n")
+')"
+  printf '%s' "$merged" | sudo tee /etc/docker/daemon.json >/dev/null
 }
 
 if jdk21_on_path; then
@@ -119,13 +133,12 @@ fi
 install_docker
 configure_docker
 
-echo "Pulling images Testcontainers starts"
-bash "$ROOT/.cursor/start.sh"
-docker pull postgres:17-alpine
-docker pull testcontainers/ryuk:0.14.0
-stop_docker
-
-echo "Resolving Gradle 9.8.0 and compiling"
+gradle_version="$(sed -n 's/.*gradle-\([0-9][0-9.]*\)-bin\.zip.*/\1/p' "$ROOT/gradle/wrapper/gradle-wrapper.properties" | head -1)"
+if [ -z "$gradle_version" ]; then
+  echo "Gradle version is missing from gradle/wrapper/gradle-wrapper.properties" >&2
+  exit 1
+fi
+echo "Resolving Gradle ${gradle_version} and compiling"
 ./gradlew --no-daemon testClasses :dispatch-api:bootJar
 
 echo "install done"
