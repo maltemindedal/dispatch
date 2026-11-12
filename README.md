@@ -77,6 +77,7 @@ dispatch-core/       The engine: domain model, state machine, worker pool, and J
 dispatch-postgres/   JdbcJobRows: one adapter at that seam, backing the same engine with
                      PostgreSQL or H2 via SELECT ... FOR UPDATE SKIP LOCKED. Still no Spring.
 dispatch-api/        Spring Boot: REST controllers, configuration properties, profile wiring.
+dispatch-lint/       Build-time only: a javac plugin that turns repo rules into compile errors.
 docs/                Documentation (see above).
 ```
 

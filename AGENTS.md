@@ -13,6 +13,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - `./gradlew build`: the pre-PR gate and all of CI (one workflow, one step, JDK 21). Compiles with
   `-Xlint:all -Werror` and runs every test in every module. Needs Docker.
 - `./gradlew :dispatch-core:test`: engine tests only, no Docker. A fast loop, not a gate.
+- `./gradlew classes testClasses`: compiles every source set, which also runs the `dispatch-lint`
+  rules. The fastest loop, about a second when warm, and no Docker.
 - One class: `./gradlew :dispatch-core:test --tests 'dev.dispatch.core.engine.PriorityOrderingTest'`
 - One method: `./gradlew :dispatch-core:test --tests 'dev.dispatch.core.engine.RetryAndDeadLetterTest.retriesUntilSuccess'`
 - `--tests` matches class and method names, and globs such as `'*RestContractTest'`, never the
@@ -43,6 +45,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   it through `JobStore.inMemory()`.
 - With the descriptor, `-Xlint:all -Werror` flags `missing-explicit-ctor` on any public class in an
   exported package. Give it an explicit constructor with a one-line Javadoc, as `QueueMetrics` has.
+- `dispatch-lint` uses only the JDK and no other module. It is build-time only: a javac plugin on
+  the annotation processor path of the other three.
 - A new dependency needs its case in the PR body: it has to replace hand-rolled code (PR #7 turned
   down Error Prone on this bar). No broker, queue or scheduling library in any module, and no
   Flyway before the next schema change (see the `jobs-schema.sql` gotcha).
@@ -62,13 +66,35 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   actions, `Optional.empty()` for a lost lease. Storage failures surface as `JobStoreException`.
 - Add API, a state transition or a config key in the same change as the code path that uses it.
   Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11).
-- Reuse the existing helper (`registry.require`, `JobState.isCancellable`) and import types instead
-  of writing them fully qualified inline: both are repeat review findings.
+- Reuse the existing helper (`registry.require`, `JobState.isCancellable`) instead of writing its
+  body again: a repeat review finding.
+- Import types instead of writing them fully qualified inline. The `inline-fqn` rule in
+  `dispatch-lint` makes one a compile error that names the import, in `package-info.java` and
+  `module-info.java` too. A qualified name stays legal only where the simple name already means
+  another type. The rule asks javac what the simple name resolves to at that position.
 - Spring Boot 4, Jackson 3 and Testcontainers 2 may postdate your training. Jackson lives in
   `tools.jackson.*` (`StringNode` replaced `TextNode`), Boot's test support is split into modules
   such as `spring-boot-resttestclient`, and the container class is
   `org.testcontainers.postgresql.PostgreSQLContainer`. Copy imports from an existing class in the
   module rather than from memory; versions are in `gradle/libs.versions.toml`.
+
+### Repo rules in the build
+
+- `dispatch-lint` holds every rule the build enforces, in one table, the `Rule` enum. Its error
+  starts with the rule id in brackets and names the fix.
+- A per-file Java rule is one `Rule` constant plus one visit method in `JavaRules`, with a test
+  class like `InlineFqnTest`: a bad fixture, a good one, and one for each exemption. A whole-repo
+  rule goes in `RepoCheck`, which the `:dispatch-lint:checkRepo` task runs as part of `check`.
+- A rule lands with the fix for every violation it finds. There is no baseline file and no
+  suppression comment: an exemption lives in the rule's code, with a test.
+- The plugin cannot check `dispatch-lint` itself. Every other module gets it from the root
+  `build.gradle.kts`, and each compile task writes an index of the sources the plugin saw. The
+  `lint-ran` rule in `checkRepo` fails for a source file that no index names with its current
+  content, so wiring that is lost cannot pass as a clean build. The index is
+  `dispatch-lint.idx` in the task's generated sources directory, which every compile empties
+  first. A compile without the plugin therefore leaves no index, even in a tree that was green.
+- `dispatch-lint/replay.sh <checkout>` runs the per-file rules over another checkout, such as the
+  parent of a past fix commit, to show a rule catches the mistake it is for.
 
 ### Tests
 

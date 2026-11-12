@@ -16,6 +16,7 @@ import dev.dispatch.core.store.JobStore;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -135,7 +136,7 @@ class JobApiTest {
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.title").value("Unknown job type"))
                 .andExpect(jsonPath("$.detail").value(
-                        org.hamcrest.Matchers.containsString("no-such-handler")));
+                        Matchers.containsString("no-such-handler")));
     }
 
     @Test
@@ -165,7 +166,7 @@ class JobApiTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(header().string("Content-Type", "application/problem+json"))
                     .andExpect(jsonPath("$.title").value("Invalid request"))
-                    .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith(
+                    .andExpect(jsonPath("$.detail").value(Matchers.startsWith(
                             "scheduledAt must be between 0001-01-01T00:00:00Z and "
                                     + "9999-12-31T23:59:59.999999999Z: ")));
         }
@@ -195,7 +196,7 @@ class JobApiTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.priority").value(0))
                 .andExpect(jsonPath("$.maxRetries").value(3))
-                .andExpect(jsonPath("$.payload").value(org.hamcrest.Matchers.anEmptyMap()));
+                .andExpect(jsonPath("$.payload").value(Matchers.anEmptyMap()));
     }
 
     @Test
@@ -243,7 +244,7 @@ class JobApiTest {
         mockMvc.perform(get("/jobs").param("limit", "99999"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value(
-                        org.hamcrest.Matchers.containsString("limit")));
+                        Matchers.containsString("limit")));
     }
 
     @Test
@@ -286,7 +287,7 @@ class JobApiTest {
         mockMvc.perform(post("/jobs/{id}/retry", job.id()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value(
-                        org.hamcrest.Matchers.containsString("SCHEDULED")));
+                        Matchers.containsString("SCHEDULED")));
 
         mockMvc.perform(post("/jobs/{id}/retry", UUID.randomUUID()))
                 .andExpect(status().isNotFound());
@@ -317,7 +318,7 @@ class JobApiTest {
         mockMvc.perform(delete("/jobs/{id}", job.id()))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value(
-                        org.hamcrest.Matchers.containsString("RUNNING")));
+                        Matchers.containsString("RUNNING")));
 
         mockMvc.perform(delete("/jobs/{id}", UUID.randomUUID()))
                 .andExpect(status().isNotFound());

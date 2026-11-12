@@ -8,6 +8,7 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobState;
+import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.store.JobStoreException;
 import java.sql.Connection;
@@ -95,8 +96,7 @@ class JobSchemaTest {
     void isIdempotent() {
         JobSchema.initialize(dataSource);
         JobStore store = JobStore.over(new JdbcJobRows(dataSource));
-        store.insert(new dev.dispatch.core.job.JobSubmission("t", "{}", 0, 3, null),
-                java.time.Instant.now());
+        store.insert(new JobSubmission("t", "{}", 0, 3, null), Instant.now());
 
         assertThatCode(() -> JobSchema.initialize(dataSource)).doesNotThrowAnyException();
 

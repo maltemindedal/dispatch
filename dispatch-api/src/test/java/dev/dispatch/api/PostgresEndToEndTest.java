@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -144,7 +145,7 @@ class PostgresEndToEndTest {
         assertThat(job.state()).isEqualTo(JobState.SCHEDULED);
 
         ResponseEntity<Void> cancelled =
-                rest.exchange("/jobs/" + job.id(), org.springframework.http.HttpMethod.DELETE,
+                rest.exchange("/jobs/" + job.id(), HttpMethod.DELETE,
                         null, Void.class);
         assertThat(cancelled.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 

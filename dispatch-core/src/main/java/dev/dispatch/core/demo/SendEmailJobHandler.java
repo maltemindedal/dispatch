@@ -3,6 +3,7 @@ package dev.dispatch.core.demo;
 import dev.dispatch.core.handler.JobContext;
 import dev.dispatch.core.handler.JobHandler;
 import dev.dispatch.core.handler.PermanentJobFailureException;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.LongAdder;
@@ -56,7 +57,7 @@ public final class SendEmailJobHandler implements JobHandler {
         Thread.sleep(latency.randomMillis());
 
         if (ThreadLocalRandom.current().nextDouble() < failureRate) {
-            throw new java.io.IOException(
+            throw new IOException(
                     "SMTP server refused the message (simulated transient failure), attempt "
                             + context.attempt());
         }

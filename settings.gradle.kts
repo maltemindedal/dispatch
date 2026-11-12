@@ -8,3 +8,4 @@ rootProject.name = "dispatch"
 include("dispatch-core")
 include("dispatch-postgres")
 include("dispatch-api")
+include("dispatch-lint")

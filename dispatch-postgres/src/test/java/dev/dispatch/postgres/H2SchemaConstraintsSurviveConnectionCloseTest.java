@@ -9,6 +9,7 @@ import dev.dispatch.core.store.JobStore;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 import org.h2.jdbcx.JdbcDataSource;
@@ -45,7 +46,7 @@ class H2SchemaConstraintsSurviveConnectionCloseTest {
 
         assertThatCode(() -> {
             store.insert(JobSubmission.of("send-email", "{}"), Instant.now());
-            store.claim("worker", 1, java.time.Duration.ofMinutes(1), Instant.now());
+            store.claim("worker", 1, Duration.ofMinutes(1), Instant.now());
         }).doesNotThrowAnyException();
         assertThat(store.countsByState().values().stream().mapToLong(Long::longValue).sum())
                 .isEqualTo(1);
