@@ -102,7 +102,15 @@ The dependency arrow points inward only:
   to core needs one of those, the change belongs in another module.
 - `dispatch-postgres` depends on `dispatch-core` and JDBC. Still no Spring.
 - `dispatch-api` is the only module that knows Spring exists.
+- `dispatch-lint` depends on the JDK only and on no other module. It is a javac plugin on the
+  annotation processor path of the three modules above, so it never reaches a runtime classpath.
 
 Compiler warnings fail the build: it compiles with `-Xlint:all -Werror`, and the tree is at zero
 warnings. Fix the cause rather than adding a `@SuppressWarnings`, unless the suppression is
 genuinely the right answer for that line and says why.
+
+Some repo rules are compile errors too. The `dispatch-lint` plugin runs inside every compile task
+and reports a violation at its line, tagged with the rule, for example
+`error: [inline-fqn] java.time.Instant is written inline. Add ...`. The message names the fix.
+There is no suppression: a rule's exemptions live in its code, in
+`dispatch-lint/src/main/java/dev/dispatch/lint/JavaRules.java`, each with a fixture test.
