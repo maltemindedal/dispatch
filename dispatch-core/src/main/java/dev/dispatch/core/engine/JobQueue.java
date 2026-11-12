@@ -235,6 +235,9 @@ public final class JobQueue implements AutoCloseable {
 
     /** Assembles a {@link JobQueue}; only {@code store} and {@code registry} are required. */
     public static final class Builder {
+
+        private Builder() {}
+
         private JobStore store;
         private JobHandlerRegistry registry;
         private RetryPolicy retryPolicy;

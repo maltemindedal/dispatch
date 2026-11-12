@@ -5,14 +5,19 @@ public class IllegalJobTransitionException extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
+    private final Transition transition;
     private final JobState from;
-    private final JobState to;
 
-    public IllegalJobTransitionException(JobState from, JobState to) {
-        super("Illegal job transition " + from + " -> " + to + "; allowed from " + from + ": "
-                + from.allowedTransitions());
+    public IllegalJobTransitionException(Transition transition, JobState from) {
+        super("Illegal job transition " + transition + " from " + from + " -> " + transition.to()
+                + "; " + transition + " moves only " + transition.from() + "; allowed from " + from
+                + ": " + from.allowedTransitions());
+        this.transition = transition;
         this.from = from;
-        this.to = to;
+    }
+
+    public Transition transition() {
+        return transition;
     }
 
     public JobState from() {
@@ -20,6 +25,6 @@ public class IllegalJobTransitionException extends RuntimeException {
     }
 
     public JobState to() {
-        return to;
+        return transition.to();
     }
 }
