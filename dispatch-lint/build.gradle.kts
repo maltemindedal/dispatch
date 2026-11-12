@@ -13,6 +13,10 @@ val checkRepo = tasks.register<JavaExec>("checkRepo") {
         .withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("sources")
     inputs.files(indexes.map { fileTree(it) { include("**/*.idx") } })
         .withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("indexes")
+    inputs.files(fileTree(root) {
+        include("**/*.md", "**/*.java", "**/*.yml", "**/*.yaml", "**/*.kts", "**/*.sql", "**/*.sh", "**/*.toml", "**/*.properties")
+        exclude(".git/**", ".gradle/**", "**/build/**")
+    }).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("textFiles")
     outputs.file(marker)
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = "dev.dispatch.lint.RepoCheck"

@@ -26,6 +26,22 @@ enum Rule {
             "%s starts a running queue and asserts an order with %s on a value that did not come from "
                     + "JobQueue.dispatchOnce(). A running dispatcher promises no order. Assert on the claim "
                     + "JobQueue.dispatchOnce() returns, and advance MutableClock to pass time (AGENTS.md, Tests)."),
+    EM_DASH("em-dash",
+            "`%s` is an em dash (U+2014). Write two short sentences instead (AGENTS.md, Prose, commits and PRs)."),
+    VOCABULARY("vocabulary",
+            "`%s` is not this project's word. Use claim (not dequeue), sweep (not reaper), dead letter "
+                    + "(not dead-letter queue), manual retry (not revive or requeue), lease and selection "
+                    + "(AGENTS.md, Prose, commits and PRs)."),
+    TEMPLATE_RESIDUE("template-residue",
+            "`%s` is placeholder text left over from a template. Write the real content, or delete the "
+                    + "line if it does not apply to this project."),
+    DEPENDABOT_COOLDOWN("dependabot-cooldown",
+            "dependabot.yml has a `cooldown` block. The owner chose Dependabot's default delay, and PR #15 "
+                    + "removed a self-invented 7-day rule. Delete the `cooldown` block (AGENTS.md, Module boundary "
+                    + "and dependencies)."),
+    NOT_UTF8("not-utf8",
+            "This text file is not valid UTF-8, so the text rules cannot read it. Save it as UTF-8, or "
+                    + "move it to an extension the text rules do not cover if it is not text."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

@@ -51,7 +51,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   down Error Prone on this bar). No broker, queue or scheduling library in any module, and no
   Flyway before the next schema change (see the `jobs-schema.sql` gotcha).
 - `.github/dependabot.yml` has no `cooldown` blocks on purpose, so Dependabot's default delay
-  applies. PR #15 removed a self-invented 7-day rule.
+  applies. PR #15 removed a self-invented 7-day rule. The `dependabot-cooldown` rule in `checkRepo`
+  fails the build on a `cooldown` key there.
 
 ### Engine code
 
@@ -92,6 +93,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - A per-file Java rule is one `Rule` constant plus one visit method in `JavaRules`, with a test
   class like `InlineFqnTest`: a bad fixture, a good one, and one for each exemption. A whole-repo
   rule goes in `RepoCheck`, which the `:dispatch-lint:checkRepo` task runs as part of `check`.
+  The text rules (a word or character in a tracked text file) live in `TextRules`, with one test
+  class per rule. The task's inputs list every text file, so a text-only edit reruns it. The
+  `template-residue` rule fails a bracketed NOTE, INSERT or DESCRIBE placeholder, or a TODO
+  marked as a placeholder, left in a `.md` or `.yml` file, as the code of conduct once had.
 - A rule lands with the fix for every violation it finds. There is no baseline file and no
   suppression comment: an exemption lives in the rule's code, with a test.
 - The plugin cannot check `dispatch-lint` itself. Every other module gets it from the root
@@ -101,7 +106,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   `dispatch-lint.idx` in the task's generated sources directory, which every compile empties
   first. A compile without the plugin therefore leaves no index, even in a tree that was green.
 - `dispatch-lint/replay.sh <checkout>` runs the per-file rules over another checkout, such as the
-  parent of a past fix commit, to show a rule catches the mistake it is for.
+  parent of a past fix commit, to show a rule catches the mistake it is for. It also runs the text
+  rules there, which need a git working tree.
 
 ### Tests
 
@@ -126,10 +132,14 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 ### Prose, commits and PRs
 
 - In code, docs, and commit messages, use claim, lease, sweep, dead letter, manual retry, and
-  selection. Do not use dequeue, lock, reaper, dead-letter queue, revive, requeue, or filter for
-  those names.
+  selection. The `vocabulary` rule in `checkRepo` holds the list of words to avoid for those
+  names, and fails the build on one in any tracked text file, identifiers included. Its error says
+  what to write instead. Using "lock" or "filter" for them stays a review point, since
+  `ReentrantLock`, `JobFilter` and `locked_until` are real names.
 - Write docs, Javadoc and comments in plain, short sentences with no em dashes: the owner removed
-  all 216 in `ffca785`.
+  all 216 in `ffca785`. The `em-dash` rule in `checkRepo` fails the build on U+2014 in any tracked or
+  untracked-but-not-ignored `.md`, `.java`, `.yml`, `.yaml`, `.kts`, `.sql`, `.sh`, `.toml` or
+  `.properties` file. A text file that is not UTF-8 fails the `not-utf8` rule.
 - Commit subjects are imperative and sentence case, with no Conventional Commits prefix. The body
   explains why. A bug fix opens its body with `BUG FIX.`, lands with its regression test in the
   same commit, says the test was red before the fix, and gives the test count change
