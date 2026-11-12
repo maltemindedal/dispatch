@@ -101,9 +101,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   - Engine defaults: `QueueConfig.Builder` or `ExponentialBackoffRetryPolicy`,
     `dispatch-api/src/main/resources/application.yml` (its bound values override the engine's
     under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`.
-  - Lifecycle: the transition table and ASCII diagram in `JobState`, the mermaid diagram in
+  - Lifecycle: the `Transition` enum, the mermaid diagram in
     `docs/architecture/job-lifecycle.md`, and the `CHECK` list in
-    `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. Only the last is tested, by
+    `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. The diagram is tested against the
+    enum by `LifecycleDocTest`, which prints the block to paste, and the `CHECK` list by
     `JobSchemaTest`, which needs Docker.
   - REST responses: the expected text in `RestContractTest` and `StatsContractTest`, and
     `docs/reference/api.md`.
