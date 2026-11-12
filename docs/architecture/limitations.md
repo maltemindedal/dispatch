@@ -27,6 +27,12 @@ This is a list of what the system does not do, in roughly the order to fix it.
    On PostgreSQL alone, a partial index `WHERE state = 'PENDING'` would be strictly better. It
    keeps every completed job out of the index entirely. H2 has no partial indexes.
 
+   The index also leaves out the `id` tiebreak that ends the claim order. A claim took 0.31 ms
+   without it and 0.14 ms with it on 200k rows, against 1.4 to 3.6 ms of planning either way,
+   so it is not worth a second `ALTER`. It goes into the first migration once a migration tool
+   lands. `ClaimIndexMatchesClaimOrderTest` fails if the index and the claim order drift apart in
+   any other column.
+
    One consequence to know about: PostgreSQL chooses the claim plan from table statistics, and
    right after a large batch of jobs becomes `PENDING` at once (a mass retry, a burst of scheduled
    jobs coming due) its estimate can say "no pending rows", so it sorts the whole backlog for each
