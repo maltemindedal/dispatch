@@ -184,8 +184,6 @@ class PostgresEndToEndTest {
     @Test
     @DisplayName("a payload holding a lone UTF-16 surrogate reads back as it was submitted")
     void loneSurrogatePayloadSurvivesTheTextColumn() {
-        // JSON allows any \\u escape, paired or not. A Java UTF-8 encoder writes an unpaired
-        // surrogate as '?', so the stored row must not carry it as a raw character.
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         String body = "{\"type\":\"" + TestHandlers.OK + "\","

@@ -46,10 +46,9 @@ public class PayloadCodec {
     }
 
     /**
-     * Replaces each unpaired surrogate with its six-character JSON escape. An unpaired surrogate
-     * has no UTF-8 encoding, so the PostgreSQL driver would store it as {@code ?}. In Jackson's
-     * output a non-ASCII char can only sit inside a string literal, where the escape denotes the
-     * same JSON value.
+     * An unpaired surrogate has no UTF-8 encoding, so the PostgreSQL driver would store it as
+     * {@code ?}. In Jackson's output a non-ASCII char can only sit inside a string literal, where
+     * the escape denotes the same JSON value.
      */
     private static String escapeUnpairedSurrogates(String json) {
         StringBuilder out = null;
