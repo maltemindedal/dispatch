@@ -58,13 +58,25 @@ public final class RepoCheck {
     }
 
     /**
+     * A git command for the repository at {@code root}. Git hooks and {@code git rebase --exec} export
+     * GIT_DIR and friends, which would point the command at another repository than {@code root}.
+     */
+    static ProcessBuilder gitIn(Path root, String... args) {
+        List<String> command = new ArrayList<>(List.of("git"));
+        command.addAll(List.of(args));
+        ProcessBuilder builder = new ProcessBuilder(command).directory(root.toFile());
+        builder.environment().keySet()
+                .removeAll(List.of("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"));
+        return builder;
+    }
+
+    /**
      * Tracked files plus untracked ones git does not ignore, so a new file is checked before it is
      * added. A tracked file deleted or moved but not yet staged is still listed by git, so only
      * files that exist in the working tree are returned.
      */
     static List<String> trackedFiles(Path root) throws IOException {
-        Process git = new ProcessBuilder("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-                .directory(root.toFile())
+        Process git = gitIn(root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
                 .redirectError(ProcessBuilder.Redirect.INHERIT)
                 .start();
         String listing = new String(git.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

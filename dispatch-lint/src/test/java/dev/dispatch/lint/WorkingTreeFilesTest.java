@@ -5,8 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,9 +47,7 @@ class WorkingTreeFilesTest {
     }
 
     private void git(String... args) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>(List.of("git"));
-        command.addAll(List.of(args));
-        Process process = new ProcessBuilder(command).directory(root.toFile()).inheritIO().start();
+        Process process = RepoCheck.gitIn(root, args).inheritIO().start();
         assertThat(process.waitFor()).isZero();
     }
 }
