@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 class HandlerApiTest {
     private static final String FIX = ". JobContext is the handler API, and the table under `What the context"
             + " gives you` in docs/guides/writing-a-handler.md documents it. Make the two agree: add or fix the"
-            + " table row, or delete the method if no handler needs it.";
+            + " table row, or delete the member if no handler needs it.";
 
     @TempDir
     Path root;
@@ -55,6 +55,23 @@ class HandlerApiTest {
         jobContext("public JobContext() {}  @Override public String toString() { return \"\"; }  void internal() {}"
                 + "  static void use(JobContext context) { context.internal(); use(new JobContext()); }");
         guide("| `jobId()` | Identity. |");
+
+        assertThat(findings()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("compares a public field by its name, with no parentheses")
+    void comparesPublicFields() throws IOException {
+        jobContext("public static final int LIMIT = 1;  static final int INTERNAL = LIMIT;");
+        guide("| `jobId()` | Identity. |", "| `GONE` | A constant. |");
+
+        assertThat(findings()).containsExactly(
+                "src/main/dev/dispatch/core/handler/JobContext.java:9: error: [handler-api] JobContext.LIMIT is "
+                        + "public, and the table does not list it" + FIX,
+                "docs/guides/writing-a-handler.md:6: error: [handler-api] The table lists `GONE`, and JobContext "
+                        + "has no public field of that name" + FIX);
+
+        guide("| `jobId()`, `LIMIT` | Identity and a constant. |");
 
         assertThat(findings()).isEmpty();
     }

@@ -29,7 +29,7 @@ public final class RepoCheck {
     private static final Set<String> HANDLER_API =
             Set.of(JOB_CONTEXT, "dev.dispatch.core.handler.PermanentJobFailureException");
     private static final String HANDLER_GUIDE = "docs/guides/writing-a-handler.md";
-    private static final Pattern TABLE_METHOD = Pattern.compile("`(\\w+)\\(");
+    private static final Pattern TABLE_MEMBER = Pattern.compile("`(\\w+)(\\(|`)");
 
     private RepoCheck() {}
 
@@ -111,9 +111,10 @@ public final class RepoCheck {
     }
 
     /**
-     * handler-api: the price of the unused-surface exemption. JobContext's public methods have no
+     * handler-api: the price of the unused-surface exemption. JobContext's public members have no
      * caller here because handler authors call them, so the guide those authors read must list
-     * exactly the methods there are.
+     * exactly the members there are. Both sides name a method {@code name()} and a field
+     * {@code name}.
      */
     static List<String> handlerApiTheGuideMisstates(Path root, List<Path> indexDirs) throws IOException {
         Map<String, String> declared = new TreeMap<>();
@@ -122,7 +123,9 @@ public final class RepoCheck {
                 String[] member = line.split(" ", 5);
                 if (line.startsWith("D " + JOB_CONTEXT + "#") && member[2].equals("public")
                         && !member[1].contains("#<init>")) {
-                    declared.put(member[1].substring(member[1].indexOf('#') + 1, member[1].indexOf('(')), member[3]);
+                    String name = member[1].substring(member[1].indexOf('#') + 1);
+                    int parameters = name.indexOf('(');
+                    declared.put(parameters < 0 ? name : name.substring(0, parameters) + "()", member[3]);
                 }
             }
         }
@@ -131,9 +134,9 @@ public final class RepoCheck {
         List<String> rows = Files.exists(guide) ? Files.readAllLines(guide) : List.of();
         for (int i = 0; i < rows.size(); i++) {
             if (rows.get(i).startsWith("|")) {
-                Matcher method = TABLE_METHOD.matcher(rows.get(i).split("\\|")[1]);
-                while (method.find()) {
-                    documented.put(method.group(1), i + 1);
+                Matcher member = TABLE_MEMBER.matcher(rows.get(i).split("\\|")[1]);
+                while (member.find()) {
+                    documented.put(member.group(1) + (member.group(2).equals("(") ? "()" : ""), i + 1);
                 }
             }
         }
@@ -141,13 +144,14 @@ public final class RepoCheck {
         declared.forEach((name, where) -> {
             if (!documented.containsKey(name)) {
                 findings.add(where + ": error: " + Rule.HANDLER_API.message(
-                        "JobContext." + name + "() is public, and the table does not list it"));
+                        "JobContext." + name + " is public, and the table does not list it"));
             }
         });
         documented.forEach((name, line) -> {
             if (!declared.isEmpty() && !declared.containsKey(name)) {
                 findings.add(HANDLER_GUIDE + ":" + line + ": error: " + Rule.HANDLER_API.message(
-                        "The table lists `" + name + "()`, and JobContext has no public method of that name"));
+                        "The table lists `" + name + "`, and JobContext has no public "
+                                + (name.endsWith("()") ? "method" : "field") + " of that name"));
             }
         });
         return findings;

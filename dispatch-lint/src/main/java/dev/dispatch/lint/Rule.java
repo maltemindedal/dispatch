@@ -48,7 +48,7 @@ enum Rule {
     HANDLER_API("handler-api",
             "%s. JobContext is the handler API, and the table under `What the context gives you` in "
                     + "docs/guides/writing-a-handler.md documents it. Make the two agree: add or fix the "
-                    + "table row, or delete the method if no handler needs it."),
+                    + "table row, or delete the member if no handler needs it."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

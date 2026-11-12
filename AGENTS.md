@@ -74,7 +74,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   An enum constant that code reaches only through `valueOf` counts as uncalled.
 - `JobContext` and `PermanentJobFailureException` are the handler API. Their callers are the
   handlers users write, so `unused-surface` exempts both types. In return the `handler-api` rule
-  in `checkRepo` fails when the public methods of `JobContext` and the table in
+  in `checkRepo` fails when the public methods and fields of `JobContext` and the table in
   `docs/guides/writing-a-handler.md` differ.
 - Nothing publishes this code, so migrate the callers and delete the old API in the same change.
   The `no-deprecated` rule in `dispatch-lint` makes `@Deprecated` in main code a compile error.
@@ -169,7 +169,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   - REST responses: the expected text in `RestContractTest` and `StatsContractTest`, and
     `docs/reference/api.md`.
   - Claim order: `JobSelection.CLAIM_ORDER` and the `idx_jobs_claim` index in `jobs-schema.sql`.
-  - Handler API: the public methods of `JobContext` and the table in
+  - Handler API: the public methods and fields of `JobContext` and the table in
     `docs/guides/writing-a-handler.md`. The `handler-api` rule in `checkRepo` checks the pair.
   - PostgreSQL image: `docker-compose.yml`, `PostgresTestSupport.java` and
     `PostgresEndToEndTest.java`. Dependabot bumps only the compose file.
