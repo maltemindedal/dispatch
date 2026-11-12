@@ -38,11 +38,39 @@ public class PayloadCodec {
             return "{}";
         }
         try {
-            return objectMapper.writeValueAsString(payload);
+            return escapeUnpairedSurrogates(objectMapper.writeValueAsString(payload));
         } catch (JacksonException e) {
             // Jackson round-tripping a JsonNode it just parsed should not fail.
             throw new IllegalArgumentException("Payload could not be serialized", e);
         }
+    }
+
+    /**
+     * An unpaired surrogate has no UTF-8 encoding, so the PostgreSQL driver would store it as
+     * {@code ?}. In Jackson's output a non-ASCII char can only sit inside a string literal, where
+     * the escape denotes the same JSON value.
+     */
+    private static String escapeUnpairedSurrogates(String json) {
+        StringBuilder out = null;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (Character.isHighSurrogate(c)
+                    && i + 1 < json.length()
+                    && Character.isLowSurrogate(json.charAt(i + 1))) {
+                if (out != null) {
+                    out.append(c).append(json.charAt(i + 1));
+                }
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                if (out == null) {
+                    out = new StringBuilder(json.length() + 6).append(json, 0, i);
+                }
+                out.append(String.format("\\u%04X", (int) c));
+            } else if (out != null) {
+                out.append(c);
+            }
+        }
+        return out == null ? json : out.toString();
     }
 
     /**
