@@ -11,25 +11,38 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
  * The whole-repo rules, run by the {@code checkRepo} task after every module compiled. Arguments:
  * the repo root, the source directories and the index directories, each list joined with the
- * path separator. {@code --text <root>} runs only the text rules, which is what the replay script
- * needs for a checkout that has no compiled indexes.
+ * path separator. {@code --replay <root> <index directory>} is for the replay script, whose one
+ * javac run over a checkout leaves one index: it skips lint-ran, which that index cannot pass.
  */
 public final class RepoCheck {
+    private static final String JOB_CONTEXT = "dev.dispatch.core.handler.JobContext";
+    private static final Set<String> HANDLER_API =
+            Set.of(JOB_CONTEXT, "dev.dispatch.core.handler.PermanentJobFailureException");
+    private static final String HANDLER_GUIDE = "docs/guides/writing-a-handler.md";
+    private static final Pattern TABLE_MEMBER = Pattern.compile("`(\\w+)(\\(|`)");
+
     private RepoCheck() {}
 
     public static void main(String[] args) throws IOException {
-        boolean textOnly = args[0].equals("--text");
-        Path root = Path.of(args[textOnly ? 1 : 0]);
+        boolean replay = args[0].equals("--replay");
+        Path root = Path.of(args[replay ? 1 : 0]);
+        List<Path> indexDirs = paths(args[2]);
         List<String> findings = new ArrayList<>();
-        if (!textOnly) {
-            findings.addAll(sourcesThePluginMissed(root, paths(args[1]), paths(args[2])));
+        if (!replay) {
+            findings.addAll(sourcesThePluginMissed(root, paths(args[1]), indexDirs));
         }
+        findings.addAll(membersNothingCalls(indexDirs));
+        findings.addAll(handlerApiTheGuideMisstates(root, indexDirs));
         findings.addAll(TextRules.check(root, trackedFiles(root)));
         PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
         findings.forEach(err::println);
@@ -68,6 +81,80 @@ public final class RepoCheck {
         builder.environment().keySet()
                 .removeAll(List.of("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"));
         return builder;
+    }
+
+    /**
+     * unused-surface: a member declared for others to use that no code in any source set resolves
+     * to. A use from a test counts. The handler API is exempt, since its callers are the handlers
+     * that users of the queue write.
+     */
+    static List<String> membersNothingCalls(List<Path> indexDirs) throws IOException {
+        List<String[]> declared = new ArrayList<>();
+        Set<String> referenced = new HashSet<>();
+        for (Path index : filesUnder(indexDirs, ".idx")) {
+            for (String line : Files.readAllLines(index)) {
+                if (line.startsWith("D ")) {
+                    declared.add(line.split(" ", 5));
+                } else if (line.startsWith("R ")) {
+                    referenced.add(line.substring(2));
+                }
+            }
+        }
+        List<String> findings = new ArrayList<>();
+        for (String[] member : declared) {
+            String key = member[1];
+            if (!referenced.contains(key) && !HANDLER_API.contains(key.substring(0, key.indexOf('#')))) {
+                findings.add(member[3] + ": error: " + Rule.UNUSED_SURFACE.message(member[4], member[2]));
+            }
+        }
+        return findings.stream().sorted().distinct().toList();
+    }
+
+    /**
+     * handler-api: the price of the unused-surface exemption. JobContext's public members have no
+     * caller here because handler authors call them, so the guide those authors read must list
+     * exactly the members there are. Both sides name a method {@code name()} and a field
+     * {@code name}.
+     */
+    static List<String> handlerApiTheGuideMisstates(Path root, List<Path> indexDirs) throws IOException {
+        Map<String, String> declared = new TreeMap<>();
+        for (Path index : filesUnder(indexDirs, ".idx")) {
+            for (String line : Files.readAllLines(index)) {
+                String[] member = line.split(" ", 5);
+                if (line.startsWith("D " + JOB_CONTEXT + "#") && member[2].equals("public")
+                        && !member[1].contains("#<init>")) {
+                    String name = member[1].substring(member[1].indexOf('#') + 1);
+                    int parameters = name.indexOf('(');
+                    declared.put(parameters < 0 ? name : name.substring(0, parameters) + "()", member[3]);
+                }
+            }
+        }
+        Map<String, Integer> documented = new TreeMap<>();
+        Path guide = root.resolve(HANDLER_GUIDE);
+        List<String> rows = Files.exists(guide) ? Files.readAllLines(guide) : List.of();
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).startsWith("|")) {
+                Matcher member = TABLE_MEMBER.matcher(rows.get(i).split("\\|")[1]);
+                while (member.find()) {
+                    documented.put(member.group(1) + (member.group(2).equals("(") ? "()" : ""), i + 1);
+                }
+            }
+        }
+        List<String> findings = new ArrayList<>();
+        declared.forEach((name, where) -> {
+            if (!documented.containsKey(name)) {
+                findings.add(where + ": error: " + Rule.HANDLER_API.message(
+                        "JobContext." + name + " is public, and the table does not list it"));
+            }
+        });
+        documented.forEach((name, line) -> {
+            if (!declared.isEmpty() && !declared.containsKey(name)) {
+                findings.add(HANDLER_GUIDE + ":" + line + ": error: " + Rule.HANDLER_API.message(
+                        "The table lists `" + name + "`, and JobContext has no public "
+                                + (name.endsWith("()") ? "method" : "field") + " of that name"));
+            }
+        });
+        return findings;
     }
 
     /**

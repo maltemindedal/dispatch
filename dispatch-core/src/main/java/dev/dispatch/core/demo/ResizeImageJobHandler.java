@@ -5,7 +5,6 @@ import dev.dispatch.core.handler.JobHandler;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +25,6 @@ public final class ResizeImageJobHandler implements JobHandler {
 
     private final DurationRange duration;
     private final Clock clock;
-    private final LongAdder resized = new LongAdder();
 
     /** 50-400ms per image. */
     public ResizeImageJobHandler() {
@@ -54,11 +52,6 @@ public final class ResizeImageJobHandler implements JobHandler {
                     context.jobId());
         }
 
-        resized.increment();
         log.info("Image resized for job {} in {}ms", context.jobId(), millis);
-    }
-
-    public long resizedCount() {
-        return resized.sum();
     }
 }

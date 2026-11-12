@@ -70,7 +70,22 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - Return refusals as values: `JobActionResult` (`Done`, `NotFound`, `WrongState`) for operator
   actions, `Optional.empty()` for a lost lease. Storage failures surface as `JobStoreException`.
 - Add API, a state transition or a config key in the same change as the code path that uses it.
-  Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11).
+  Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11). The
+  `unused-surface` rule in `checkRepo` fails a non-private method, constructor, field or enum
+  constant in main or testFixtures code that no code in any module names. A use from a test
+  counts, a call of an override counts for the declaration it overrides, and a `@MethodSource`
+  counts for the factory it names. Exempt, since something other than a caller reaches them: an
+  override, `main(String[])`, a member with a Spring, Jakarta, Jackson or JUnit annotation, a
+  constructor of a Spring-annotated class, a record's canonical constructor and accessors, and
+  every member of a `web.dto` record.
+  Code that reads every constant of an enum uses each one: `values()`, `valueOf`, and
+  `EnumSet.allOf`, `noneOf`, `range` or `complementOf`. So does a field or record component of the
+  enum's type in a `@ConfigurationProperties` type or a `web.dto` type, where Spring or Jackson
+  binds the constant by name.
+- `JobContext` and `PermanentJobFailureException` are the handler API. Their callers are the
+  handlers users write, so `unused-surface` exempts both types. In return the `handler-api` rule
+  in `checkRepo` fails when the public methods and fields of `JobContext` and the table in
+  `docs/guides/writing-a-handler.md` differ.
 - Nothing publishes this code, so migrate the callers and delete the old API in the same change.
   The `no-deprecated` rule in `dispatch-lint` makes `@Deprecated` in main code a compile error.
   (`0f09dac` deprecated three unfenced overloads, and `80457fc` deleted them.)
@@ -105,9 +120,13 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   content, so wiring that is lost cannot pass as a clean build. The index is
   `dispatch-lint.idx` in the task's generated sources directory, which every compile empties
   first. A compile without the plugin therefore leaves no index, even in a tree that was green.
+- The index also lists each member a compile task declares (`D` lines, main and testFixtures only)
+  and each member its code resolves to (`R` lines, every source set), keyed
+  `owner#name(erased,parameter,types)`. `MemberIndex` writes them and holds the `unused-surface`
+  exemptions. `RepoCheck` subtracts the `R` keys of all tasks from the `D` keys.
 - `dispatch-lint/replay.sh <checkout>` runs the per-file rules over another checkout, such as the
-  parent of a past fix commit, to show a rule catches the mistake it is for. It also runs the text
-  rules there, which need a git working tree.
+  parent of a past fix commit, to show a rule catches the mistake it is for. It also runs the
+  `checkRepo` rules there, except `lint-ran`. The text rules need a git working tree.
 
 ### Tests
 
@@ -165,6 +184,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   - Claim order: `JobSelection.CLAIM_ORDER` and the `idx_jobs_claim` index in `jobs-schema.sql`.
     `ClaimIndexMatchesClaimOrderTest` checks them with no Docker. The index leaves out the trailing
     `ID` on purpose (`docs/architecture/limitations.md`).
+  - Handler API: the public methods and fields of `JobContext` and the table in
+    `docs/guides/writing-a-handler.md`. The `handler-api` rule in `checkRepo` checks the pair.
   - PostgreSQL image: `docker-compose.yml`, `PostgresTestSupport.java` and
     `PostgresEndToEndTest.java`. Dependabot bumps only the compose file.
 - `jobs-schema.sql` is applied idempotently at startup with no migration tool, so

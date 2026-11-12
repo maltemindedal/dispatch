@@ -42,6 +42,13 @@ enum Rule {
     NOT_UTF8("not-utf8",
             "This text file is not valid UTF-8, so the text rules cannot read it. Save it as UTF-8, or "
                     + "move it to an extension the text rules do not cover if it is not text."),
+    UNUSED_SURFACE("unused-surface",
+            "%s is %s and nothing in any module calls it. Delete it, or add it in the same change as the "
+                    + "code that calls it (AGENTS.md, Engine code)."),
+    HANDLER_API("handler-api",
+            "%s. JobContext is the handler API, and the table under `What the context gives you` in "
+                    + "docs/guides/writing-a-handler.md documents it. Make the two agree: add or fix the "
+                    + "table row, or delete the member if no handler needs it."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "
