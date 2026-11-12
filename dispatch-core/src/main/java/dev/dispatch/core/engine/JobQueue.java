@@ -181,7 +181,8 @@ public final class JobQueue implements AutoCloseable {
 
     /**
      * Runs one maintenance sweep synchronously. It promotes due jobs and reclaims expired leases.
-     * The scheduler does this on a timer; tests call it directly to avoid sleeping.
+     * The sweeper thread does this every maintenance interval; tests call it directly to avoid
+     * sleeping.
      */
     public QueueMaintenance.SweepResult sweep() {
         return maintenance.sweep();
