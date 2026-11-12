@@ -1,7 +1,7 @@
 # The job lifecycle
 
-Six states, with every legal transition declared explicitly in `JobState`
-(`dispatch-core/src/main/java/dev/dispatch/core/job/JobState.java`) and validated on every
+Six states, with every legal move named as a constant of `Transition`
+(`dispatch-core/src/main/java/dev/dispatch/core/job/Transition.java`) and validated on every
 change. The database enforces the same set with a `CHECK` constraint, so a stray hand-written
 `UPDATE` cannot invent a seventh state.
 
@@ -22,11 +22,12 @@ stateDiagram-v2
     COMPLETED --> [*]
 ```
 
-The diagram is the whole of `JobState`'s transition table: every arrow is a move the engine
-makes, and nothing else is legal. The only way into `DEAD` is from `RUNNING`, since only an
+The diagram is the whole of the `Transition` enum plus submission: every arrow is a move the
+engine makes, and nothing else is legal. `LifecycleDocTest` fails when the arrows and the enum
+disagree, and prints the block to paste. The only way into `DEAD` is from `RUNNING`, since only an
 attempt can exhaust the retry budget or fail permanently. An unstarted job is removed by
 cancellation, which deletes the row instead of moving it to any state. A future operator action
-that needs a new transition adds it to the table together with the code path that performs it.
+that needs a new transition adds a `Transition` constant together with the code path that performs it.
 
 | State | Meaning |
 | --- | --- |
@@ -66,5 +67,5 @@ These are what the six states are *for*:
   attempt count starts again from 0, so the next claim is attempt 1 again, under a new lease id
   that keeps a stalled earlier attempt from recording over it.
 
-Every one of these paths calls `JobState.requireTransitionTo`, so an illegal move throws rather
-than corrupting the record.
+Every one of these paths names its move as a `Transition` constant, which refuses any source
+state that move does not name, so an illegal move throws rather than corrupting the record.
