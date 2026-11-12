@@ -15,6 +15,7 @@ import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,14 +24,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -143,17 +144,44 @@ class HostileInputPostgresTest {
         assertThat(readBacks).as("201 responses read back").isGreaterThan(10);
     }
 
+    /**
+     * Every handler is found through Spring's merged mapping, so any {@code @XxxMapping} or
+     * {@code @RequestMapping} counts. Each {@code @RequestParam} and {@code @PathVariable} gets
+     * every text value. A handler that takes a {@code @RequestBody} sends a valid body beside them.
+     */
     private void exerciseParameters(Method method) {
-        String verb = verbOf(method);
-        if (verb == null) {
+        RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
+        if (mapping == null) {
             return;
         }
-        String template = JobController.class.getAnnotation(RequestMapping.class).value()[0]
-                + pathOf(method);
+        String prefix = AnnotatedElementUtils
+                .findMergedAnnotation(JobController.class, RequestMapping.class).path()[0];
+        List<String> verbs = mapping.method().length == 0
+                ? List.of("GET") : Arrays.stream(mapping.method()).map(RequestMethod::name).toList();
+        List<String> paths = mapping.path().length == 0 ? List.of("") : List.of(mapping.path());
+        String body = null;
+        String contentType = null;
         for (Parameter parameter : method.getParameters()) {
-            RequestParam query = parameter.getAnnotation(RequestParam.class);
+            if (parameter.isAnnotationPresent(RequestBody.class)) {
+                assertThat(parameter.getType()).as("%s body type", method.getName())
+                        .isEqualTo(SubmitJobRequest.class);
+                body = bodyWith("type", "\"" + TestHandlers.OK + "\"");
+                contentType = "application/json";
+            }
+        }
+        for (String verb : verbs) {
+            for (String path : paths) {
+                exerciseParameters(method, verb, prefix + path, contentType, body);
+            }
+        }
+    }
+
+    private void exerciseParameters(Method method, String verb, String template, String contentType,
+            String body) {
+        for (Parameter parameter : method.getParameters()) {
+            boolean query = parameter.isAnnotationPresent(RequestParam.class);
             boolean inPath = parameter.isAnnotationPresent(PathVariable.class);
-            if (query == null && !inPath) {
+            if (!query && !inPath) {
                 continue;
             }
             String name = parameter.getName();
@@ -162,31 +190,10 @@ class HostileInputPostgresTest {
                         ? template.replace("{" + name + "}", value)
                         : template.replaceAll("\\{[^}]+}", "00000000-0000-0000-0000-000000000000")
                                 + "?" + name + "=" + value;
-                send(verb + " " + name + " = " + label, verb, path, null, null,
+                send(verb + " " + name + " = " + label, verb, path, contentType, body,
                         "status".equals(name));
             });
         }
-    }
-
-    private static String verbOf(Method method) {
-        if (method.isAnnotationPresent(GetMapping.class)) {
-            return "GET";
-        }
-        if (method.isAnnotationPresent(PostMapping.class)
-                && method.getParameterCount() > 0
-                && method.getParameters()[0].isAnnotationPresent(PathVariable.class)) {
-            return "POST";
-        }
-        return method.isAnnotationPresent(DeleteMapping.class) ? "DELETE" : null;
-    }
-
-    private static String pathOf(Method method) {
-        String[] paths = method.isAnnotationPresent(GetMapping.class)
-                ? method.getAnnotation(GetMapping.class).value()
-                : method.isAnnotationPresent(PostMapping.class)
-                        ? method.getAnnotation(PostMapping.class).value()
-                        : method.getAnnotation(DeleteMapping.class).value();
-        return paths.length == 0 ? "" : paths[0];
     }
 
     private static String bodyWith(String component, String fragment) {
