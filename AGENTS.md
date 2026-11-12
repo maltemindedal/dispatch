@@ -85,6 +85,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   `build.gradle.kts`, and each compile task writes an index of the sources the plugin saw. The
   `lint-ran` rule in `checkRepo` fails for a source file that no index names with its current
   content, so wiring that is lost cannot pass as a clean build.
+- `dispatch-lint/replay.sh <checkout>` runs the per-file rules over another checkout, such as the
+  parent of a past fix commit, to show a rule catches the mistake it is for.
 
 ### Tests
 
