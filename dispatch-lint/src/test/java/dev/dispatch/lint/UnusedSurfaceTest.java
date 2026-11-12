@@ -319,6 +319,83 @@ class UnusedSurfaceTest {
     }
 
     @Test
+    @DisplayName("counts values(), valueOf() and an EnumSet built from the enum's class or a range as a use of"
+            + " every constant, and no other use of the class literal")
+    void countsReadingAllConstantsAsAUseOfEach() throws IOException {
+        Fixture.write(root, "main/app/Parsing.java", """
+                package app;
+
+                import java.util.EnumSet;
+                import java.util.List;
+
+                public class Parsing {
+                    public enum Mode { FAST, SLOW }
+                    public enum Level { LOW, HIGH }
+                    public enum Color { RED, GREEN }
+                    public enum Shape { ROUND, SQUARE }
+                    public enum Size { S, M, L }
+                    public enum Side { LEFT, RIGHT }
+                    public enum Kind { OLD, NEW }
+                    public enum Unit { BYTE, WORD }
+                    public enum Idle { NEVER }
+
+                    private Object all(String name) {
+                        return List.of(Mode.values(), Level.valueOf(name), EnumSet.allOf(Color.class),
+                                EnumSet.noneOf(Shape.class), EnumSet.range(Size.S, Size.L),
+                                EnumSet.complementOf(EnumSet.of(Side.LEFT)), Enum.valueOf(Kind.class, name),
+                                Unit.class.getEnumConstants(), Idle.class.getName());
+                    }
+                }
+                """);
+
+        assertThat(findings()).containsExactly("src/main/app/Parsing.java:15: error: [unused-surface] "
+                + "Idle.NEVER is public" + FIX);
+    }
+
+    @Test
+    @DisplayName("counts an enum that a @ConfigurationProperties type or a web.dto type holds as a use of every"
+            + " constant, since Spring and Jackson bind them by name")
+    void countsABoundEnumAsAUseOfEachConstant() throws IOException {
+        annotation("org.springframework.boot.context.properties", "ConfigurationProperties");
+        Fixture.write(root, "main/app/Settings.java", """
+                package app;
+
+                import java.util.List;
+                import org.springframework.boot.context.properties.ConfigurationProperties;
+
+                @ConfigurationProperties
+                public record Settings(StoreType store, List<Mode[]> modes, Retry retry) {
+                    public enum StoreType { JDBC, MEMORY }
+                    public enum Mode { FAST, SLOW }
+                    public enum Jitter { NONE, FULL }
+
+                    public record Retry(Jitter jitter, Retry next) {}
+                }
+
+                @ConfigurationProperties
+                class Bean {
+                    private Level level;
+
+                    enum Level { LOW, HIGH }
+                }
+
+                record Plain(Unbound unbound) {
+                    enum Unbound { NEVER }
+                }
+                """);
+        Fixture.write(root, "main/app/web/dto/JobRequest.java", """
+                package app.web.dto;
+
+                public record JobRequest(Priority priority) {
+                    public enum Priority { LOW, HIGH }
+                }
+                """);
+
+        assertThat(findings()).containsExactly("src/main/app/Settings.java:23: error: [unused-surface] "
+                + "Unbound.NEVER is public" + FIX);
+    }
+
+    @Test
     @DisplayName("exempts every member of a web.dto record, which Jackson reads, and not a class there")
     void exemptsWebDtoRecords() throws IOException {
         Fixture.write(root, "main/app/web/dto/JobResponse.java", """

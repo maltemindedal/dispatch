@@ -1,9 +1,11 @@
 package dev.dispatch.lint;
 
+import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewClassTree;
 import com.sun.source.tree.Tree;
@@ -13,6 +15,7 @@ import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -42,12 +45,22 @@ import javax.lang.model.util.Types;
  * override or implementation, {@code main(String[])}, a member a framework finds by its
  * annotation, a constructor of a Spring-annotated class, what a record declares from its
  * components, and any member of a {@code web.dto} record, which Jackson reads.
+ *
+ * <p>An enum constant is also referenced when code reads all constants of its enum at once
+ * ({@code values()}, {@code valueOf}, an {@code EnumSet} over the whole enum), and when Spring or
+ * Jackson binds it by name into a {@code @ConfigurationProperties} type or a {@code web.dto} type.
  */
 final class MemberIndex extends TreePathScanner<Void, Void> {
     private static final List<String> FRAMEWORKS =
             List.of("org.springframework.", "jakarta.", "tools.jackson.", "org.junit.");
     private static final Set<ElementKind> MEMBERS = Set.of(
             ElementKind.METHOD, ElementKind.CONSTRUCTOR, ElementKind.FIELD, ElementKind.ENUM_CONSTANT);
+    private static final String CONFIGURATION_PROPERTIES =
+            "org.springframework.boot.context.properties.ConfigurationProperties";
+    /** JDK methods whose result holds or is drawn from every constant of the enum in their return type. */
+    private static final Set<String> READS_ALL_CONSTANTS = Set.of(
+            "java.util.EnumSet#allOf", "java.util.EnumSet#noneOf", "java.util.EnumSet#range",
+            "java.util.EnumSet#complementOf", "java.lang.Enum#valueOf", "java.lang.Class#getEnumConstants");
 
     private final Trees trees;
     private final Elements elements;
@@ -66,6 +79,25 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
         this.file = file;
         this.declares = file.contains("src/main/") || file.contains("src/testFixtures/");
         this.lines = lines;
+    }
+
+    @Override
+    public Void visitClass(ClassTree declaration, Void unused) {
+        if (trees.getElement(getCurrentPath()) instanceof TypeElement type
+                && (isInWebDto(type) || hasAnnotationFrom(type, List.of(CONFIGURATION_PROPERTIES)))) {
+            referenceBoundEnums(type, new HashSet<>());
+        }
+        return super.visitClass(declaration, unused);
+    }
+
+    @Override
+    public Void visitMethodInvocation(MethodInvocationTree invocation, Void unused) {
+        if (trees.getElement(getCurrentPath()) instanceof ExecutableElement method
+                && method.getEnclosingElement() instanceof TypeElement owner
+                && READS_ALL_CONSTANTS.contains(owner.getQualifiedName() + "#" + method.getSimpleName())) {
+            referenceEnumsIn(trees.getTypeMirror(getCurrentPath()));
+        }
+        return super.visitMethodInvocation(invocation, unused);
     }
 
     @Override
@@ -109,6 +141,63 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
         if (member != null && MEMBERS.contains(member.getKind())
                 && member.getEnclosingElement() instanceof TypeElement owner) {
             lines.add(SourceIndex.referenced(key(owner, member)));
+            if (readsAllConstants(member, owner)) {
+                referenceConstants(owner);
+            }
+        }
+    }
+
+    /** The {@code values()} or {@code valueOf(String)} that every enum has. An enum cannot declare either itself. */
+    private static boolean readsAllConstants(Element member, TypeElement owner) {
+        return owner.getKind() == ElementKind.ENUM && member instanceof ExecutableElement method
+                && method.getModifiers().contains(Modifier.STATIC)
+                && (method.getSimpleName().contentEquals("values") && method.getParameters().isEmpty()
+                        || method.getSimpleName().contentEquals("valueOf") && method.getParameters().size() == 1);
+    }
+
+    /**
+     * Spring and Jackson turn a name into a constant of each enum the fields of {@code type} hold.
+     * They bind a nested type the same way, so this follows field types whose source is in this
+     * compile task.
+     */
+    private void referenceBoundEnums(TypeElement type, Set<TypeElement> followed) {
+        if (!followed.add(type)) {
+            return;
+        }
+        for (Element member : type.getEnclosedElements()) {
+            if (member.getKind() == ElementKind.FIELD && !member.getModifiers().contains(Modifier.STATIC)) {
+                for (TypeElement held : typesIn(member.asType(), new HashSet<>())) {
+                    if (held.getKind() == ElementKind.ENUM) {
+                        referenceConstants(held);
+                    } else if (trees.getTree(held) != null) {
+                        referenceBoundEnums(held, followed);
+                    }
+                }
+            }
+        }
+    }
+
+    private void referenceEnumsIn(TypeMirror type) {
+        typesIn(type, new HashSet<>()).stream().filter(held -> held.getKind() == ElementKind.ENUM)
+                .forEach(this::referenceConstants);
+    }
+
+    /** The declared types {@code type} names: itself, its type arguments and its array component. */
+    private Set<TypeElement> typesIn(TypeMirror type, Set<TypeElement> found) {
+        if (type instanceof ArrayType array) {
+            typesIn(array.getComponentType(), found);
+        } else if (type instanceof DeclaredType declared && declared.asElement() instanceof TypeElement element) {
+            found.add(element);
+            declared.getTypeArguments().forEach(argument -> typesIn(argument, found));
+        }
+        return found;
+    }
+
+    private void referenceConstants(TypeElement enumType) {
+        for (Element constant : enumType.getEnclosedElements()) {
+            if (constant.getKind() == ElementKind.ENUM_CONSTANT) {
+                lines.add(SourceIndex.referenced(key(enumType, constant)));
+            }
         }
     }
 
