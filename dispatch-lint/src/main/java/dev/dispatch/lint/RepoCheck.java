@@ -2,6 +2,7 @@ package dev.dispatch.lint;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,14 +14,20 @@ import java.util.stream.Stream;
 /**
  * The whole-repo rules, run by the {@code checkRepo} task after every module compiled. Arguments:
  * the repo root, the source directories and the index directories, each list joined with the
- * path separator.
+ * path separator. {@code --text <root>} runs only the text rules, which is what the replay script
+ * needs for a checkout that has no compiled indexes.
  */
 public final class RepoCheck {
     private RepoCheck() {}
 
     public static void main(String[] args) throws IOException {
-        Path root = Path.of(args[0]);
-        List<String> findings = sourcesThePluginMissed(root, paths(args[1]), paths(args[2]));
+        boolean textOnly = args[0].equals("--text");
+        Path root = Path.of(args[textOnly ? 1 : 0]);
+        List<String> findings = new ArrayList<>();
+        if (!textOnly) {
+            findings.addAll(sourcesThePluginMissed(root, paths(args[1]), paths(args[2])));
+        }
+        findings.addAll(TextRules.check(root, trackedFiles(root)));
         findings.forEach(System.err::println);
         if (!findings.isEmpty()) {
             System.exit(1);
@@ -44,6 +51,24 @@ public final class RepoCheck {
             }
         }
         return findings;
+    }
+
+    /** Tracked files plus untracked ones git does not ignore, so a new file is checked before it is added. */
+    private static List<String> trackedFiles(Path root) throws IOException {
+        Process git = new ProcessBuilder("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+                .directory(root.toFile())
+                .redirectError(ProcessBuilder.Redirect.INHERIT)
+                .start();
+        String listing = new String(git.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        try {
+            if (git.waitFor() != 0) {
+                throw new IOException("git ls-files failed in " + root);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while listing files", e);
+        }
+        return Stream.of(listing.split("\0")).filter(name -> !name.isEmpty()).toList();
     }
 
     private static List<Path> filesUnder(List<Path> dirs, String suffix) throws IOException {

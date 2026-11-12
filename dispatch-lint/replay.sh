@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Replays the per-file rules over another checkout of this repo, such as a worktree of the commit
-# before a past fix. It answers "would this rule have caught that mistake".
+# Replays the rules over another checkout of this repo, such as a worktree of the commit before a
+# past fix. It answers "would this rule have caught that mistake". The per-file Java rules and the
+# text rules of checkRepo both run; the checkout must be a git working tree for the text rules.
 #
 #   dispatch-lint/replay.sh <checkout>
 #
@@ -8,7 +9,7 @@
 # own dependencies, with the plugin from this tree. A Gradle build of the checkout would stop at
 # the first module with a finding and hide the rest. Prints each finding as path:line: [rule] text,
 # then the javac error count on stderr. More errors than findings means some code did not compile
-# and may hide findings.
+# and may hide findings. The text rule findings follow, in the same form, with their line numbers.
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 tree=$(cd "$1" && pwd)
@@ -36,3 +37,5 @@ javac -d "$work/classes" -proc:none -Xmaxerrs 10000 -cp "$classpath" \
     "-Xplugin:DispatchLint $tree $work/replay.idx" @"$work/sources" > "$work/javac.log" 2>&1 || true
 sed -n "s#^$tree/\(.*\): error: \(\[[a-z-]*\] .*\)#\1: \2#p" "$work/javac.log" | sort
 echo "$(grep -c ': error: ' "$work/javac.log") javac errors, the findings above included" >&2
+java -cp "$(ls "$here"/dispatch-lint/build/libs/*.jar)" dev.dispatch.lint.RepoCheck --text "$tree" 2>&1 \
+    | sed 's/: error: /: /' | sort || true

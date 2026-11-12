@@ -26,6 +26,8 @@ enum Rule {
             "%s starts a running queue and asserts an order with %s on a value that did not come from "
                     + "JobQueue.dispatchOnce(). A running dispatcher promises no order. Assert on the claim "
                     + "JobQueue.dispatchOnce() returns, and advance MutableClock to pass time (AGENTS.md, Tests)."),
+    EM_DASH("em-dash",
+            "An em dash. Write two short sentences instead (AGENTS.md, Prose, commits and PRs)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "
