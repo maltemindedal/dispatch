@@ -184,6 +184,60 @@ class UnusedSurfaceTest {
     }
 
     @Test
+    @DisplayName("counts a call through a subtype as a use of the declaration it overrides or implements")
+    void countsACallThroughASubtype() throws IOException {
+        Fixture.write(root, "main/app/Stores.java", """
+                package app;
+
+                import java.util.function.IntSupplier;
+
+                interface Store {
+                    int size();
+
+                    int capacity();
+
+                    default int free() {
+                        return 0;
+                    }
+                }
+
+                interface Named {
+                    String name();
+                }
+
+                interface Closed {
+                    void close();
+                }
+
+                class Shared {
+                    public String name() {
+                        return "";
+                    }
+
+                    public void close() {}
+                }
+
+                abstract class Memory extends Shared implements Store, Named, Closed {
+                    @Override
+                    public int size() {
+                        close();
+                        return 0;
+                    }
+                }
+
+                class Caller {
+                    private Object use(Memory memory) {
+                        IntSupplier capacity = memory::capacity;
+                        return memory.size() + memory.name() + capacity;
+                    }
+                }
+                """);
+
+        assertThat(findings()).containsExactly("src/main/app/Stores.java:10: error: [unused-surface] "
+                + "Store.free() is public" + FIX);
+    }
+
+    @Test
     @DisplayName("exempts main(String[]), and no other method named main")
     void exemptsTheEntryPoint() throws IOException {
         Fixture.write(root, "main/app/Application.java", """

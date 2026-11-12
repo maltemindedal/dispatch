@@ -14,6 +14,7 @@ import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
@@ -144,7 +145,42 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
             if (readsAllConstants(member, owner)) {
                 referenceConstants(owner);
             }
+            if (member instanceof ExecutableElement method) {
+                referenceOverridden(method, owner);
+            }
         }
+    }
+
+    /**
+     * A call that resolves to an override is also a call of each declaration it overrides. The
+     * receiver's type is searched as well as the owner, since a method may implement an interface
+     * only in a subclass that inherits it.
+     */
+    private void referenceOverridden(ExecutableElement method, TypeElement owner) {
+        Set<ExecutableElement> overridden = new HashSet<>(overridden(method, owner));
+        if (receiver() instanceof TypeElement receiver && !receiver.equals(owner)) {
+            overridden.addAll(overridden(method, receiver));
+        }
+        for (ExecutableElement declaration : overridden) {
+            lines.add(SourceIndex.referenced(key((TypeElement) declaration.getEnclosingElement(), declaration)));
+        }
+    }
+
+    /** The type the member at the current path is looked up in: the qualifier's, or the enclosing class. */
+    private Element receiver() {
+        TreePath path = getCurrentPath();
+        Tree qualifier = switch (path.getLeaf()) {
+            case MemberSelectTree select -> select.getExpression();
+            case MemberReferenceTree reference -> reference.getQualifierExpression();
+            default -> null;
+        };
+        if (qualifier != null) {
+            return types.asElement(trees.getTypeMirror(new TreePath(path, qualifier)));
+        }
+        while (path != null && !(path.getLeaf() instanceof ClassTree)) {
+            path = path.getParentPath();
+        }
+        return path == null ? null : trees.getElement(path);
     }
 
     /** The {@code values()} or {@code valueOf(String)} that every enum has. An enum cannot declare either itself. */
@@ -226,7 +262,8 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
         if (member instanceof ExecutableElement executable) {
             return member.getKind() == ElementKind.CONSTRUCTOR
                     ? hasAnnotationFrom(owner, List.of("org.springframework.")) || elements.isCanonicalConstructor(executable)
-                    : isMain(executable) || isRecordAccessor(executable, owner) || overrides(executable, owner);
+                    : isMain(executable) || isRecordAccessor(executable, owner)
+                            || !overridden(executable, owner).isEmpty();
         }
         return false;
     }
@@ -261,21 +298,28 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
         return false;
     }
 
-    private boolean overrides(ExecutableElement method, TypeElement owner) {
-        Deque<TypeMirror> supertypes = new ArrayDeque<>(types.directSupertypes(owner.asType()));
+    /** Every declaration in a supertype of {@code in} that {@code method} overrides or implements there. */
+    private List<ExecutableElement> overridden(ExecutableElement method, TypeElement in) {
+        List<ExecutableElement> overridden = new ArrayList<>();
+        if (method.getKind() != ElementKind.METHOD || method.getModifiers().contains(Modifier.STATIC)) {
+            return overridden;
+        }
+        Set<TypeElement> searched = new HashSet<>();
+        Deque<TypeMirror> supertypes = new ArrayDeque<>(List.of(in.asType()));
         while (!supertypes.isEmpty()) {
             TypeMirror supertype = supertypes.pop();
-            if (types.asElement(supertype) instanceof TypeElement type) {
+            if (types.asElement(supertype) instanceof TypeElement type && searched.add(type)) {
                 for (Element inherited : type.getEnclosedElements()) {
-                    if (inherited instanceof ExecutableElement candidate
-                            && elements.overrides(method, candidate, owner)) {
-                        return true;
+                    if (inherited instanceof ExecutableElement candidate && !candidate.equals(method)
+                            && candidate.getSimpleName().equals(method.getSimpleName())
+                            && elements.overrides(method, candidate, in)) {
+                        overridden.add(candidate);
                     }
                 }
                 supertypes.addAll(types.directSupertypes(supertype));
             }
         }
-        return false;
+        return overridden;
     }
 
     /** The identity both line kinds share: {@code owner#name(erased,parameter,types)}, or {@code owner#name} for a field. */

@@ -68,9 +68,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11). The
   `unused-surface` rule in `checkRepo` fails a non-private method, constructor, field or enum
   constant in main or testFixtures code that no code in any module names. A use from a test
-  counts. Exempt, since something other than a caller reaches them: an override, `main(String[])`,
-  a member with a Spring, Jakarta, Jackson or JUnit annotation, a constructor of a Spring-annotated
-  class, a record's canonical constructor and accessors, and every member of a `web.dto` record.
+  counts, and a call of an override counts for the declaration it overrides. Exempt, since
+  something other than a caller reaches them: an override, `main(String[])`, a member with a
+  Spring, Jakarta, Jackson or JUnit annotation, a constructor of a Spring-annotated class, a
+  record's canonical constructor and accessors, and every member of a `web.dto` record.
   Code that reads every constant of an enum uses each one: `values()`, `valueOf`, and
   `EnumSet.allOf`, `noneOf`, `range` or `complementOf`. So does a field or record component of the
   enum's type in a `@ConfigurationProperties` type or a `web.dto` type, where Spring or Jackson
