@@ -142,7 +142,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   `JdbcScopeAtomicityTest` does.
 - `HostileInputPostgresTest` sends hostile values into every `SubmitJobRequest` component and every
   `@RequestParam` and `@PathVariable` of every `JobController` handler, found by reflection through
-  Spring's merged mapping, and needs Docker. A new field, parameter or handler is covered with no
+  Spring's merged mapping under the name Spring binds each by, with a valid value for every other
+  required parameter, and needs Docker. A new field, parameter or handler is covered with no
   edit, except a new `@RequestBody` type, which fails the test until it is taught. Each request must
   not 5xx or name an internal class, and each 201 must read back with the payload it was sent. It leaves Jackson's number coercion unasserted. Its
   `OPEN_PAYLOAD_FINDING` skips one known gap: a payload of `1e400` reads back as `"Infinity"`.

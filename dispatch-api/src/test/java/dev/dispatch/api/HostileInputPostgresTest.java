@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ValueConstants;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -147,7 +149,8 @@ class HostileInputPostgresTest {
     /**
      * Every handler is found through Spring's merged mapping, so any {@code @XxxMapping} or
      * {@code @RequestMapping} counts. Each {@code @RequestParam} and {@code @PathVariable} gets
-     * every text value. A handler that takes a {@code @RequestBody} sends a valid body beside them.
+     * every text value, under the name Spring binds it by, with a valid value for each other
+     * required one. A handler that takes a {@code @RequestBody} sends a valid body beside them.
      */
     private void exerciseParameters(Method method) {
         RequestMapping mapping = AnnotatedElementUtils.findMergedAnnotation(method, RequestMapping.class);
@@ -176,23 +179,89 @@ class HostileInputPostgresTest {
         }
     }
 
+    /**
+     * One input at a time gets each hostile value. Every other required input gets a valid value
+     * for its type, so the request still reaches the handler and the hostile one is the only
+     * reason it could fail.
+     */
     private void exerciseParameters(Method method, String verb, String template, String contentType,
             String body) {
-        for (Parameter parameter : method.getParameters()) {
-            boolean query = parameter.isAnnotationPresent(RequestParam.class);
-            boolean inPath = parameter.isAnnotationPresent(PathVariable.class);
-            if (!query && !inPath) {
-                continue;
-            }
-            String name = parameter.getName();
-            TEXT_VALUES.forEach((label, value) -> {
-                String path = inPath
-                        ? template.replace("{" + name + "}", value)
-                        : template.replaceAll("\\{[^}]+}", "00000000-0000-0000-0000-000000000000")
-                                + "?" + name + "=" + value;
-                send(verb + " " + name + " = " + label, verb, path, contentType, body,
-                        "status".equals(name));
+        List<Input> inputs = inputs(method);
+        for (Input target : inputs) {
+            TEXT_VALUES.forEach((label, hostile) -> {
+                String path = template;
+                List<String> query = new ArrayList<>();
+                for (Input input : inputs) {
+                    String value = input == target ? hostile : validValue(input);
+                    if (input.inPath()) {
+                        path = path.replace("{" + input.name() + "}", value);
+                    } else if (input == target || input.required()) {
+                        query.add(input.name() + "=" + value);
+                    }
+                }
+                path = path.replaceAll("\\{[^}]+}", "00000000-0000-0000-0000-000000000000");
+                if (!query.isEmpty()) {
+                    path += "?" + String.join("&", query);
+                }
+                send(verb + " " + target.name() + " = " + label, verb, path, contentType, body,
+                        "status".equals(target.name()));
             });
+        }
+    }
+
+    /** A query parameter or path variable, named on the wire the way Spring names it. */
+    private record Input(Parameter parameter, boolean inPath, String name, boolean required) {
+    }
+
+    private static List<Input> inputs(Method method) {
+        List<Input> inputs = new ArrayList<>();
+        for (Parameter parameter : method.getParameters()) {
+            PathVariable variable =
+                    AnnotatedElementUtils.findMergedAnnotation(parameter, PathVariable.class);
+            RequestParam param =
+                    AnnotatedElementUtils.findMergedAnnotation(parameter, RequestParam.class);
+            if (variable != null) {
+                inputs.add(new Input(parameter, true, wireName(variable.name(), parameter), true));
+            } else if (param != null) {
+                boolean required = param.required() && ValueConstants.DEFAULT_NONE.equals(param.defaultValue());
+                inputs.add(new Input(parameter, false, wireName(param.name(), parameter), required));
+            }
+        }
+        return inputs;
+    }
+
+    private static String wireName(String annotated, Parameter parameter) {
+        return annotated.isEmpty() ? parameter.getName() : annotated;
+    }
+
+    private String validValue(Input input) {
+        Class<?> type = input.parameter().getType();
+        if (type == UUID.class) {
+            return newJobId();
+        }
+        if (type.isEnum()) {
+            return ((Enum<?>) type.getEnumConstants()[0]).name();
+        }
+        if (type == boolean.class || type == Boolean.class) {
+            return "true";
+        }
+        if (type.isPrimitive() || Number.class.isAssignableFrom(type)) {
+            return "1";
+        }
+        return "a";
+    }
+
+    private String newJobId() {
+        try {
+            HttpResponse<String> created = HTTP.send(HttpRequest.newBuilder(
+                    URI.create("http://localhost:" + port + "/jobs"))
+                    .header("Content-Type", "application/json")
+                    .POST(BodyPublishers.ofString(
+                            bodyWith("type", "\"" + TestHandlers.OK + "\""), StandardCharsets.UTF_8))
+                    .build(), BodyHandlers.ofString());
+            return CLIENT_MAPPER.readTree(created.body()).path("id").asString();
+        } catch (Exception e) {
+            throw new IllegalStateException("could not create a job for a path variable", e);
         }
     }
 
