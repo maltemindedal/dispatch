@@ -13,6 +13,9 @@ enum Rule {
     DISPLAY_NAME("display-name",
             "%s has no @DisplayName. Add `@DisplayName(\"<one sentence saying what it checks>\")`. "
                     + "A `name =` on @ParameterizedTest is extra, not a replacement (AGENTS.md, Tests)."),
+    WALL_CLOCK("wall-clock",
+            "%s reads the wall clock. Engine code takes the injected Clock, or the `now` its caller passes "
+                    + "(AGENTS.md, Engine code). Only a constructor may default a Clock with Clock.systemUTC()."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

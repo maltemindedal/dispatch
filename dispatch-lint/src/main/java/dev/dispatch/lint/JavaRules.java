@@ -2,6 +2,7 @@ package dev.dispatch.lint;
 
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
@@ -34,6 +35,7 @@ final class JavaRules extends TreePathScanner<Void, Void> {
     private final DocTrees trees;
     private final CompilationUnitTree unit;
     private final boolean inTestSources;
+    private final boolean inCoreMain;
     private boolean reported;
 
     JavaRules(DocTrees trees, CompilationUnitTree unit) {
@@ -41,6 +43,7 @@ final class JavaRules extends TreePathScanner<Void, Void> {
         this.unit = unit;
         String path = unit.getSourceFile().toUri().getPath();
         this.inTestSources = path.contains("/src/test/") || path.contains("/src/testFixtures/");
+        this.inCoreMain = path.contains("/dispatch-core/src/main/");
     }
 
     /**
@@ -75,13 +78,34 @@ final class JavaRules extends TreePathScanner<Void, Void> {
     /** junit-assert: a call to a method of the JUnit Assertions class, however it was imported. */
     @Override
     public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
-        if (inTestSources && trees.getElement(new TreePath(getCurrentPath(), call.getMethodSelect()))
+        if (trees.getElement(new TreePath(getCurrentPath(), call.getMethodSelect()))
                 instanceof ExecutableElement method
-                && method.getEnclosingElement() instanceof TypeElement owner
-                && owner.getQualifiedName().contentEquals("org.junit.jupiter.api.Assertions")) {
-            report(call.getMethodSelect(), Rule.JUNIT_ASSERT, "Assertions." + method.getSimpleName());
+                && method.getEnclosingElement() instanceof TypeElement owner) {
+            String name = owner.getQualifiedName() + "#" + method.getSimpleName();
+            if (inTestSources && owner.getQualifiedName().contentEquals("org.junit.jupiter.api.Assertions")) {
+                report(call.getMethodSelect(), Rule.JUNIT_ASSERT, "Assertions." + method.getSimpleName());
+            }
+            boolean readsSystemClock = name.equals("java.time.Instant#now") && method.getParameters().isEmpty()
+                    || name.equals("java.lang.System#currentTimeMillis")
+                    || name.equals("java.time.Clock#systemUTC") && !inConstructor();
+            if (inCoreMain && readsSystemClock) {
+                report(call.getMethodSelect(), Rule.WALL_CLOCK, owner.getSimpleName() + "." + method.getSimpleName() + "()");
+            }
         }
         return super.visitMethodInvocation(call, unused);
+    }
+
+    /** True when the nearest enclosing method is a constructor, with no lambda or class in between. */
+    private boolean inConstructor() {
+        for (Tree up : getCurrentPath()) {
+            if (up instanceof LambdaExpressionTree || up instanceof ClassTree) {
+                return false;
+            }
+            if (up instanceof MethodTree method) {
+                return method.getName().contentEquals("<init>");
+            }
+        }
+        return false;
     }
 
     /** display-name, for a test method: it carries one of the JUnit test annotations. */

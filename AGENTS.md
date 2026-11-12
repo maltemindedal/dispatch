@@ -54,7 +54,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   only render a selection and write rows back. A new predicate or sort key goes in `JobSelection`
   (every order ends in the `ID` tiebreak), with its test in `JobStoreContract` so all three stores
   run it. Per-adapter copies had drifted apart before PR #6.
-- Engine code reads time only from the injected `Clock`; `JobStore` methods take `now`.
+- Engine code reads time only from the injected `Clock`; `JobStore` methods take `now`. The
+  `wall-clock` rule in `dispatch-lint` fails `Instant.now()`, `System.currentTimeMillis()` and
+  `Clock.systemUTC()` in `dispatch-core` main. A constructor may default a `Clock` with
+  `Clock.systemUTC()`, as `JobQueue` does.
 - Guard shared state with `ReentrantLock` or `Semaphore`; main code has no `synchronized`. Handlers
   run on virtual threads, and on this Java 21 toolchain `synchronized` pins them (JDK 24 fixed it).
 - Return refusals as values: `JobActionResult` (`Done`, `NotFound`, `WrongState`) for operator
