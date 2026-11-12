@@ -35,9 +35,14 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 ### Module boundary and dependencies
 
 - `dispatch-core` uses only the JDK and SLF4J, `dispatch-postgres` adds JDBC but no Spring, and
-  only `dispatch-api` knows Spring. The classpath keeps Spring and Jackson out of core, but nothing
-  stops `java.sql`: it ships with the JDK and core has no `module-info.java`. Keep JDBC in
-  `dispatch-postgres`, behind the `JobRows` seam, by hand.
+  only `dispatch-api` knows Spring. The classpath keeps Spring and Jackson out of core, and
+  `dispatch-core/src/main/java/module-info.java` requires only `org.slf4j`, so `javac` refuses
+  `java.sql` (and any other JDK module) in core main code with `package java.sql is not visible`.
+  Keep JDBC in `dispatch-postgres`, behind the `JobRows` seam. A new package in core that another
+  module uses needs an `exports` line in the descriptor. `InMemoryJobRows` is not exported: reach
+  it through `JobStore.inMemory()`.
+- With the descriptor, `-Xlint:all -Werror` flags `missing-explicit-ctor` on any public class in an
+  exported package. Give it an explicit constructor with a one-line Javadoc, as `QueueMetrics` has.
 - A new dependency needs its case in the PR body: it has to replace hand-rolled code (PR #7 turned
   down Error Prone on this bar). No broker, queue or scheduling library in any module, and no
   Flyway before the next schema change (see the `jobs-schema.sql` gotcha).
@@ -88,7 +93,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   same commit, says the test was red before the fix, and gives the test count change
   (`325 -> 337 tests`). Docs the change touches go in the same commit.
 - PR bodies follow `.github/pull_request_template.md` and say what was not verified locally and
-  why. Merge with a merge commit (`gh pr merge --merge`), the repo's convention.
+  why.
 
 ## Gotchas
 
@@ -98,9 +103,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
     under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`
     (`ConfigurationDocTableTest` checks its key and default table against the bound
     `application.yml` keys).
-  - Lifecycle: the transition table and ASCII diagram in `JobState`, the mermaid diagram in
+  - Lifecycle: the `Transition` enum, the mermaid diagram in
     `docs/architecture/job-lifecycle.md`, and the `CHECK` list in
-    `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. Only the last is tested, by
+    `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. The diagram is tested against the
+    enum by `LifecycleDocTest`, which prints the block to paste, and the `CHECK` list by
     `JobSchemaTest`, which needs Docker.
   - REST responses: the expected text in `RestContractTest` and `StatsContractTest`, and
     `docs/reference/api.md`.

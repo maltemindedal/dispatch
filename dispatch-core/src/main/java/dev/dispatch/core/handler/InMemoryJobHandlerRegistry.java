@@ -9,6 +9,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /** The obvious registry: a concurrent map, safe to add to while the queue is running. */
 public final class InMemoryJobHandlerRegistry implements JobHandlerRegistry {
 
+    /** Starts with no handlers. */
+    public InMemoryJobHandlerRegistry() {}
+
     private final Map<String, JobHandler> handlers = new ConcurrentHashMap<>();
 
     /**
