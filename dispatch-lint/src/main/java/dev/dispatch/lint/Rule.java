@@ -7,6 +7,25 @@ package dev.dispatch.lint;
 enum Rule {
     INLINE_FQN("inline-fqn",
             "%1$s is written inline. Add `import %1$s;` and use the simple name (AGENTS.md, Engine code)."),
+    JUNIT_ASSERT("junit-assert",
+            "%s is a JUnit assertion. Assert with AssertJ: `assertThat(...)`, or `assertThatThrownBy(...)` "
+                    + "for an exception (AGENTS.md, Tests)."),
+    DISPLAY_NAME("display-name",
+            "%s has no @DisplayName. Add `@DisplayName(\"<one sentence saying what it checks>\")`. "
+                    + "A `name =` on @ParameterizedTest is extra, not a replacement (AGENTS.md, Tests)."),
+    WALL_CLOCK("wall-clock",
+            "%s reads the wall clock. Engine code takes the injected Clock, or the `now` its caller passes "
+                    + "(AGENTS.md, Engine code). Only a constructor may default a Clock with Clock.systemUTC()."),
+    NO_SYNCHRONIZED("no-synchronized",
+            "`synchronized` pins a virtual thread to its carrier on Java 21, and handlers run on virtual "
+                    + "threads. Guard the state with a ReentrantLock or a Semaphore (AGENTS.md, Engine code)."),
+    NO_DEPRECATED("no-deprecated",
+            "%s is marked @Deprecated, but nothing publishes this code, so no caller needs time to move. "
+                    + "Migrate the callers and delete it in the same change (AGENTS.md, Engine code)."),
+    ORDER_FROM_TIMING("order-from-timing",
+            "%s starts a running queue and asserts an order with %s on a value that did not come from "
+                    + "JobQueue.dispatchOnce(). A running dispatcher promises no order. Assert on the claim "
+                    + "JobQueue.dispatchOnce() returns, and advance MutableClock to pass time (AGENTS.md, Tests)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

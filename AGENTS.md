@@ -59,13 +59,20 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   only render a selection and write rows back. A new predicate or sort key goes in `JobSelection`
   (every order ends in the `ID` tiebreak), with its test in `JobStoreContract` so all three stores
   run it. Per-adapter copies had drifted apart before PR #6.
-- Engine code reads time only from the injected `Clock`; `JobStore` methods take `now`.
-- Guard shared state with `ReentrantLock` or `Semaphore`; main code has no `synchronized`. Handlers
-  run on virtual threads, and on this Java 21 toolchain `synchronized` pins them (JDK 24 fixed it).
+- Engine code reads time only from the injected `Clock`; `JobStore` methods take `now`. The
+  `wall-clock` rule in `dispatch-lint` fails `Instant.now()`, `System.currentTimeMillis()` and
+  `Clock.systemUTC()` in `dispatch-core` main. A constructor may default a `Clock` with
+  `Clock.systemUTC()`, as `JobQueue` does.
+- Guard shared state with `ReentrantLock` or `Semaphore`. Handlers run on virtual threads, and on
+  this Java 21 toolchain `synchronized` pins them (JDK 24 fixed it). The `no-synchronized` rule in
+  `dispatch-lint` makes a `synchronized` method or block in main code a compile error.
 - Return refusals as values: `JobActionResult` (`Done`, `NotFound`, `WrongState`) for operator
   actions, `Optional.empty()` for a lost lease. Storage failures surface as `JobStoreException`.
 - Add API, a state transition or a config key in the same change as the code path that uses it.
   Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11).
+- Nothing publishes this code, so migrate the callers and delete the old API in the same change.
+  The `no-deprecated` rule in `dispatch-lint` makes `@Deprecated` in main code a compile error.
+  (`0f09dac` deprecated three unfenced overloads, and `80457fc` deleted them.)
 - Reuse the existing helper (`registry.require`, `JobState.isCancellable`) instead of writing its
   body again: a repeat review finding.
 - Import types instead of writing them fully qualified inline. The `inline-fqn` rule in
@@ -98,14 +105,23 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 
 ### Tests
 
-- Every test class and method carries a `@DisplayName` sentence. Assert with AssertJ.
+- Every test class and method carries a `@DisplayName` sentence. The `display-name` rule in
+  `dispatch-lint` fails a `@Test`, `@ParameterizedTest` or `@RepeatedTest` method, and a concrete
+  class that declares or inherits one, without it. A `name =` on `@ParameterizedTest` is extra, not
+  a replacement. Abstract bases and classes without tests are exempt.
+- Assert with AssertJ. The `junit-assert` rule in `dispatch-lint` makes a call to
+  `org.junit.jupiter.api.Assertions` a compile error that names `assertThat` and
+  `assertThatThrownBy`.
 - Behaviour every store shares goes in `JobStoreContract` (`dispatch-core/src/testFixtures`).
   JDBC-only behaviour gets an abstract base with `H2*` and `Postgres*` subclasses, as
   `JdbcScopeAtomicityTest` does.
 - Test what the engine does through `JobQueue.dispatchOnce()` and the claim it returns, and pass
   time by advancing `MutableClock`. Virtual-thread start order says nothing about claim order:
-  reading it that way caused both CI flakes so far. Keep a running dispatcher and Awaitility for
-  tests about how the engine runs.
+  reading it that way caused both CI flakes so far. The `order-from-timing` rule in
+  `dispatch-lint` fails a test method that calls `JobQueue.start()` and then makes an ordered
+  AssertJ assertion (`containsExactly`, `startsWith` and the like) on a value that did not come from
+  `dispatchOnce()`. It cannot see an order raced through a helper, so that stays a review point.
+  Keep a running dispatcher and Awaitility for tests about how the engine runs.
 
 ### Prose, commits and PRs
 

@@ -2,7 +2,6 @@ package dev.dispatch.core.job;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.EnumSet;
 import org.junit.jupiter.api.DisplayName;
@@ -70,12 +69,12 @@ class JobStateTest {
                 .hasMessageContaining("PENDING -> COMPLETED")
                 .hasMessageContaining("RUNNING");
 
-        IllegalJobTransitionException thrown = assertThrows(
-                IllegalJobTransitionException.class,
-                () -> Transition.MANUAL_RETRY.applyTo(JobState.COMPLETED));
-        assertThat(thrown.from()).isEqualTo(JobState.COMPLETED);
-        assertThat(thrown.to()).isEqualTo(JobState.PENDING);
-        assertThat(thrown.transition()).isEqualTo(Transition.MANUAL_RETRY);
+        assertThatThrownBy(() -> Transition.MANUAL_RETRY.applyTo(JobState.COMPLETED))
+                .isInstanceOfSatisfying(IllegalJobTransitionException.class, thrown -> {
+                    assertThat(thrown.from()).isEqualTo(JobState.COMPLETED);
+                    assertThat(thrown.to()).isEqualTo(JobState.PENDING);
+                    assertThat(thrown.transition()).isEqualTo(Transition.MANUAL_RETRY);
+                });
     }
 
     @Test

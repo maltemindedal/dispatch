@@ -2,8 +2,9 @@ package dev.dispatch.core.demo;
 
 import dev.dispatch.core.handler.JobContext;
 import dev.dispatch.core.handler.JobHandler;
+import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
+import java.util.Objects;
 import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,15 +25,17 @@ public final class ResizeImageJobHandler implements JobHandler {
     private static final Logger log = LoggerFactory.getLogger(ResizeImageJobHandler.class);
 
     private final DurationRange duration;
+    private final Clock clock;
     private final LongAdder resized = new LongAdder();
 
     /** 50-400ms per image. */
     public ResizeImageJobHandler() {
-        this(Duration.ofMillis(50), Duration.ofMillis(400));
+        this(Duration.ofMillis(50), Duration.ofMillis(400), Clock.systemUTC());
     }
 
-    public ResizeImageJobHandler(Duration minDuration, Duration maxDuration) {
+    public ResizeImageJobHandler(Duration minDuration, Duration maxDuration, Clock clock) {
         this.duration = new DurationRange(minDuration, maxDuration);
+        this.clock = Objects.requireNonNull(clock, "clock");
     }
 
     @Override
@@ -44,7 +47,7 @@ public final class ResizeImageJobHandler implements JobHandler {
         // thread, which is the one workload virtual threads do not help with.
         Thread.sleep(millis);
 
-        if (context.leaseExpired(Instant.now())) {
+        if (context.leaseExpired(clock.instant())) {
             // Past the visibility deadline the job may already be running elsewhere. Saying so
             // loudly beats silently double-processing.
             log.warn("Job {} overran its visibility lease; another worker may have taken it over",
