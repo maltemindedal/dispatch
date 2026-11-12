@@ -45,7 +45,9 @@ class ClaimIndexMatchesClaimOrderTest {
         assertThat(index.group(1).trim())
                 .as("jobs-schema.sql line %d: change the idx_jobs_claim columns to (%s) so they"
                                 + " match JobSelection.CLAIMABLE's ordering (the trailing id is"
-                                + " left out on purpose)",
+                                + " left out on purpose). CREATE INDEX IF NOT EXISTS keeps an existing"
+                                + " database's old index, so this is a schema change: see the"
+                                + " jobs-schema.sql gotcha in AGENTS.md",
                         line, expected)
                 .isEqualTo(expected);
     }
