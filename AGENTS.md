@@ -65,7 +65,15 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - Return refusals as values: `JobActionResult` (`Done`, `NotFound`, `WrongState`) for operator
   actions, `Optional.empty()` for a lost lease. Storage failures surface as `JobStoreException`.
 - Add API, a state transition or a config key in the same change as the code path that uses it.
-  Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11).
+  Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11). The
+  `unused-surface` rule in `checkRepo` fails a non-private method, constructor, field or enum
+  constant in main or testFixtures code that no code in any module names. A use from a test
+  counts. Exempt, since something other than a caller reaches them: an override, `main(String[])`,
+  a member with a Spring, Jakarta, Jackson or JUnit annotation, a constructor of a Spring-annotated
+  class, a record's canonical constructor and accessors, and every member of a `web.dto` record.
+  An enum constant that code reaches only through `valueOf` counts as uncalled.
+- `JobContext` and `PermanentJobFailureException` are the handler API. Their callers are the
+  handlers users write, so `unused-surface` exempts both types.
 - Nothing publishes this code, so migrate the callers and delete the old API in the same change.
   The `no-deprecated` rule in `dispatch-lint` makes `@Deprecated` in main code a compile error.
   (`0f09dac` deprecated three unfenced overloads, and `80457fc` deleted them.)
@@ -100,9 +108,13 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   content, so wiring that is lost cannot pass as a clean build. The index is
   `dispatch-lint.idx` in the task's generated sources directory, which every compile empties
   first. A compile without the plugin therefore leaves no index, even in a tree that was green.
+- The index also lists each member a compile task declares (`D` lines, main and testFixtures only)
+  and each member its code resolves to (`R` lines, every source set), keyed
+  `owner#name(erased,parameter,types)`. `MemberIndex` writes them and holds the `unused-surface`
+  exemptions. `RepoCheck` subtracts the `R` keys of all tasks from the `D` keys.
 - `dispatch-lint/replay.sh <checkout>` runs the per-file rules over another checkout, such as the
-  parent of a past fix commit, to show a rule catches the mistake it is for. It also runs the text
-  rules there, which need a git working tree.
+  parent of a past fix commit, to show a rule catches the mistake it is for. It also runs the
+  `checkRepo` rules there, except `lint-ran`. The text rules need a git working tree.
 
 ### Tests
 

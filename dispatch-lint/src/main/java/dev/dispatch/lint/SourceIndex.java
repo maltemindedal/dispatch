@@ -29,6 +29,19 @@ final class SourceIndex {
         }
     }
 
+    /**
+     * A member declared for others to use: its key, its visibility, where it is and what an error
+     * calls it. The last field may hold spaces.
+     */
+    static String declared(String key, String visibility, String where, String display) {
+        return "D " + key + " " + visibility + " " + where + " " + display;
+    }
+
+    /** A member some code resolves to. A key holds no space. */
+    static String referenced(String key) {
+        return "R " + key;
+    }
+
     static String relative(Path root, Path source) {
         return root.relativize(source).toString();
     }

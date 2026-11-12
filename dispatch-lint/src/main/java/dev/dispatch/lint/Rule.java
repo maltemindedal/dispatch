@@ -42,6 +42,9 @@ enum Rule {
     NOT_UTF8("not-utf8",
             "This text file is not valid UTF-8, so the text rules cannot read it. Save it as UTF-8, or "
                     + "move it to an extension the text rules do not cover if it is not text."),
+    UNUSED_SURFACE("unused-surface",
+            "%s is %s and nothing in any module calls it. Delete it, or add it in the same change as the "
+                    + "code that calls it (AGENTS.md, Engine code)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

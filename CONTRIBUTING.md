@@ -114,3 +114,8 @@ and reports a violation at its line, tagged with the rule, for example
 `error: [inline-fqn] java.time.Instant is written inline. Add ...`. The message names the fix.
 There is no suppression: a rule's exemptions live in its code, in
 `dispatch-lint/src/main/java/dev/dispatch/lint/JavaRules.java`, each with a fixture test.
+
+One rule looks across modules. `./gradlew check` fails on a non-private member of main or
+testFixtures code that nothing in any module calls, for example
+`error: [unused-surface] JobQueue.config() is public and nothing in any module calls it`. Add a
+member in the same change as its first caller. A call from a test counts.

@@ -5,6 +5,7 @@ import com.sun.source.util.JavacTask;
 import com.sun.source.util.Plugin;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
+import com.sun.source.util.TreePath;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -14,7 +15,8 @@ import java.util.TreeSet;
 
 /**
  * The javac plugin that runs the per-file repo rules inside every compile task. A violation is an
- * ordinary compile error. Arguments: the repo root, then the index file to write.
+ * ordinary compile error. Arguments: the repo root, then the index file to write, then an optional
+ * {@code replay}, which writes the index even after a finding.
  */
 public final class DispatchLint implements Plugin {
     @Override
@@ -26,6 +28,7 @@ public final class DispatchLint implements Plugin {
     public void init(JavacTask task, String... args) {
         Path root = Path.of(args[0]);
         Path index = Path.of(args[1]);
+        boolean replay = args.length > 2 && args[2].equals("replay");
         DocTrees trees = DocTrees.instance(task);
         delete(index);
         task.addTaskListener(new TaskListener() {
@@ -43,10 +46,17 @@ public final class DispatchLint implements Plugin {
                         JavaRules rules = new JavaRules(trees, event.getCompilationUnit());
                         rules.check(event.getTypeElement());
                         clean &= !rules.reported();
+                        TreePath type = trees.getPath(event.getTypeElement());
+                        if (type != null) {
+                            String file = SourceIndex.relative(root, Path.of(event.getSourceFile().toUri()));
+                            new MemberIndex(trees, task.getElements(), task.getTypes(), event.getCompilationUnit(),
+                                    file, lines).scan(type, null);
+                        }
                     }
                     case COMPILATION -> {
                         // An index vouches for the sources in it, so a run with a finding leaves none.
-                        if (clean) {
+                        // A replay reads only the member lines, and an old checkout always has findings.
+                        if (clean || replay) {
                             write(index, lines);
                         }
                     }

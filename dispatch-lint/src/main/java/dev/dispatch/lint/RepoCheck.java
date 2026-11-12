@@ -17,19 +17,24 @@ import java.util.stream.Stream;
 /**
  * The whole-repo rules, run by the {@code checkRepo} task after every module compiled. Arguments:
  * the repo root, the source directories and the index directories, each list joined with the
- * path separator. {@code --text <root>} runs only the text rules, which is what the replay script
- * needs for a checkout that has no compiled indexes.
+ * path separator. {@code --replay <root> <index directory>} is for the replay script, whose one
+ * javac run over a checkout leaves one index: it skips lint-ran, which that index cannot pass.
  */
 public final class RepoCheck {
+    private static final Set<String> HANDLER_API = Set.of(
+            "dev.dispatch.core.handler.JobContext", "dev.dispatch.core.handler.PermanentJobFailureException");
+
     private RepoCheck() {}
 
     public static void main(String[] args) throws IOException {
-        boolean textOnly = args[0].equals("--text");
-        Path root = Path.of(args[textOnly ? 1 : 0]);
+        boolean replay = args[0].equals("--replay");
+        Path root = Path.of(args[replay ? 1 : 0]);
+        List<Path> indexDirs = paths(args[2]);
         List<String> findings = new ArrayList<>();
-        if (!textOnly) {
-            findings.addAll(sourcesThePluginMissed(root, paths(args[1]), paths(args[2])));
+        if (!replay) {
+            findings.addAll(sourcesThePluginMissed(root, paths(args[1]), indexDirs));
         }
+        findings.addAll(membersNothingCalls(indexDirs));
         findings.addAll(TextRules.check(root, trackedFiles(root)));
         PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
         findings.forEach(err::println);
@@ -68,6 +73,33 @@ public final class RepoCheck {
         builder.environment().keySet()
                 .removeAll(List.of("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"));
         return builder;
+    }
+
+    /**
+     * unused-surface: a member declared for others to use that no code in any source set resolves
+     * to. A use from a test counts. The handler API is exempt, since its callers are the handlers
+     * that users of the queue write.
+     */
+    static List<String> membersNothingCalls(List<Path> indexDirs) throws IOException {
+        List<String[]> declared = new ArrayList<>();
+        Set<String> referenced = new HashSet<>();
+        for (Path index : filesUnder(indexDirs, ".idx")) {
+            for (String line : Files.readAllLines(index)) {
+                if (line.startsWith("D ")) {
+                    declared.add(line.split(" ", 5));
+                } else if (line.startsWith("R ")) {
+                    referenced.add(line.substring(2));
+                }
+            }
+        }
+        List<String> findings = new ArrayList<>();
+        for (String[] member : declared) {
+            String key = member[1];
+            if (!referenced.contains(key) && !HANDLER_API.contains(key.substring(0, key.indexOf('#')))) {
+                findings.add(member[3] + ": error: " + Rule.UNUSED_SURFACE.message(member[4], member[2]));
+            }
+        }
+        return findings.stream().sorted().distinct().toList();
     }
 
     /**
