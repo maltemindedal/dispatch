@@ -146,7 +146,7 @@ public final class JdbcJobRows implements JobRows {
     }
 
     /** The SQL column each orderable field lives in. The schema's business, not the engine's. */
-    private static String columnOf(JobField field) {
+    static String columnOf(JobField field) {
         return switch (field) {
             case PRIORITY -> "priority";
             case SCHEDULED_AT -> "scheduled_at";
@@ -156,7 +156,7 @@ public final class JdbcJobRows implements JobRows {
         };
     }
 
-    private static String orderByClause(List<JobSelection.Order> ordering) {
+    static String orderByClause(List<JobSelection.Order> ordering) {
         return ordering.stream()
                 .map(order -> columnOf(order.field()) + (order.descending() ? " DESC" : ""))
                 .collect(Collectors.joining(", ", " ORDER BY ", ""));

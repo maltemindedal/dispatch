@@ -100,7 +100,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - Files that change together. Only some pairs have a test, so check the rest by hand:
   - Engine defaults: `QueueConfig.Builder` or `ExponentialBackoffRetryPolicy`,
     `dispatch-api/src/main/resources/application.yml` (its bound values override the engine's
-    under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`.
+    under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`
+    (`ConfigurationDocTableTest` checks its key and default table against the bound
+    `application.yml` keys).
   - Lifecycle: the `Transition` enum, the mermaid diagram in
     `docs/architecture/job-lifecycle.md`, and the `CHECK` list in
     `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. The diagram is tested against the
@@ -109,6 +111,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   - REST responses: the expected text in `RestContractTest` and `StatsContractTest`, and
     `docs/reference/api.md`.
   - Claim order: `JobSelection.CLAIM_ORDER` and the `idx_jobs_claim` index in `jobs-schema.sql`.
+    `ClaimIndexMatchesClaimOrderTest` checks them with no Docker. The index leaves out the trailing
+    `ID` on purpose (`docs/architecture/limitations.md`).
   - PostgreSQL image: `docker-compose.yml`, `PostgresTestSupport.java` and
     `PostgresEndToEndTest.java`. Dependabot bumps only the compose file.
 - `jobs-schema.sql` is applied idempotently at startup with no migration tool, so
