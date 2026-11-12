@@ -527,7 +527,7 @@ public abstract class JobStoreContract {
         }
 
         @Test
-        @DisplayName("a reclaim on the last permitted attempt dead-letters the job instead of re-queueing it")
+        @DisplayName("a reclaim on the last permitted attempt dead-letters the job instead of returning it to PENDING")
         void reclaimOnTheLastAttemptDeadLetters() {
             // maxRetries=0: exactly one attempt, and a worker that dies mid-way has spent it.
             Job job = store.insert(new JobSubmission("send-email", "{}", 0, 0, null), now());

@@ -317,8 +317,8 @@ class JobTest {
     }
 
     @Test
-    @DisplayName("reclaiming a job that still has retries re-queues it, exactly as an expired lease does")
-    void reclaimWithRetriesLeftRequeues() {
+    @DisplayName("reclaiming a job that still has retries returns it to PENDING, exactly as an expired lease does")
+    void reclaimWithRetriesLeftReturnsToPending() {
         Job running = pendingJob(3).claimedBy("crashed-worker", UUID.randomUUID(), NOW, LEASE);
         Instant later = NOW.plus(LEASE).plusSeconds(1);
 

@@ -12,7 +12,7 @@ This is a list of what the system does not do, in roughly the order to fix it.
    claim. It renders the same `JobSelection` as the SQL `ORDER BY`, so both adapters behave
    identically. A priority index would be the first optimisation if it were
    ever used for more than tests and demos.
-3. **Completed jobs are kept forever.** There's no reaper. A real deployment wants
+3. **Completed jobs are kept forever.** Nothing sweeps them away. A real deployment wants
    `DELETE FROM jobs WHERE state = 'COMPLETED' AND updated_at < now() - interval '7 days'` on a
    schedule, or partitioning by month. It also bounds the cost of `GET /stats`, which counts every
    retained row (tens of milliseconds at a million rows) on every call.

@@ -124,8 +124,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 ### Prose, commits and PRs
 
 - In code, docs, and commit messages, use claim, lease, sweep, dead letter, manual retry, and
-  selection. Do not use dequeue, lock, reaper, dead-letter queue, revive, requeue, or filter for
-  those names.
+  selection. The `vocabulary` rule in `checkRepo` holds the list of words to avoid for those
+  names, and fails the build on one in any tracked text file, identifiers included. Its error says
+  what to write instead. Using "lock" or "filter" for them stays a review point, since
+  `ReentrantLock`, `JobFilter` and `locked_until` are real names.
 - Write docs, Javadoc and comments in plain, short sentences with no em dashes: the owner removed
   all 216 in `ffca785`. The `em-dash` rule in `checkRepo` fails the build on U+2014 in any tracked
   `.md`, `.java`, `.yml`, `.kts`, `.sql`, `.sh`, `.toml` or `.properties` file.

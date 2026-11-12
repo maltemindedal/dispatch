@@ -187,7 +187,7 @@ public final class JobStore implements AutoCloseable {
      * its last permitted one goes to DEAD instead (see {@link Job#reclaimed}), so a job that keeps
      * killing its workers cannot be retried without end.
      *
-     * @return how many leases were reclaimed, whether the job was re-queued or dead-lettered
+     * @return how many leases were reclaimed, whether the job went back to PENDING or to DEAD
      */
     public int reclaimExpiredLeases(Instant now, int limit) {
         return sweep(JobSelection.EXPIRED_LEASE, now, limit, job -> job.reclaimed(now));

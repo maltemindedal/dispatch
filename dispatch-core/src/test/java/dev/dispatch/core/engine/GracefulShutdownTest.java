@@ -109,7 +109,7 @@ class GracefulShutdownTest {
     }
 
     @Test
-    @DisplayName("a job still running at the deadline is interrupted and requeued, not lost")
+    @DisplayName("a job still running at the deadline is interrupted and left for another claim, not lost")
     void deadlineInterruptsStragglers() throws Exception {
         CountDownLatch started = new CountDownLatch(1);
         AtomicInteger interrupted = new AtomicInteger();

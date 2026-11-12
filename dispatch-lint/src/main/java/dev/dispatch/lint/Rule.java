@@ -28,6 +28,10 @@ enum Rule {
                     + "JobQueue.dispatchOnce() returns, and advance MutableClock to pass time (AGENTS.md, Tests)."),
     EM_DASH("em-dash",
             "An em dash. Write two short sentences instead (AGENTS.md, Prose, commits and PRs)."),
+    VOCABULARY("vocabulary",
+            "`%s` is not this project's word. Use claim (not dequeue), sweep (not reaper), dead letter "
+                    + "(not dead-letter queue), manual retry (not revive or requeue), lease and selection "
+                    + "(AGENTS.md, Prose, commits and PRs)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "
