@@ -30,7 +30,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The sweeper's survival promise, previously stated only in a comment: a storage error during one
- * sweep must never kill the scheduled task, because nothing would recover it.
+ * sweep must never end the sweeper thread, because nothing would recover it.
  */
 @DisplayName("Queue maintenance")
 class QueueMaintenanceTest {
@@ -126,7 +126,7 @@ class QueueMaintenanceTest {
     }
 
     @Test
-    @DisplayName("a failing sweep does not kill the scheduled task")
+    @DisplayName("a failing sweep does not end the sweeper thread")
     void sweepSurvivesStorageFailures() {
         Job delayed = store.insert(new JobSubmission("record", "{}", 0, 3,
                 clock.instant().plus(Duration.ofMinutes(1))), clock.instant());
@@ -134,8 +134,7 @@ class QueueMaintenanceTest {
         rows.failing.set(true);
         maintenance.start();
 
-        // Let the scheduler hit the failure repeatedly; each throw would have ended a
-        // scheduleWithFixedDelay task that let it escape.
+        // Let the sweeper hit the failure repeatedly; one throw that escaped would end its thread.
         await().atMost(Duration.ofSeconds(5)).until(() -> rows.failuresSeen.get() >= 3);
 
         // Storage recovers and the job comes due: the still-alive sweeper must promote it.

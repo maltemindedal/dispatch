@@ -10,7 +10,7 @@ import java.util.UUID;
  * An immutable snapshot of a job row.
  *
  * <p>Every lifecycle change produces a new {@code Job} through one of the transition methods
- * below, and every one of those validates against {@link JobState#requireTransitionTo}. Stores
+ * below, and every one of those validates against its {@link Transition}. Stores
  * persist the result; they never mutate state by hand.
  *
  * @param id          stable identity, assigned at submission
@@ -150,8 +150,8 @@ public record Job(
      *                one
      */
     public Job claimedBy(String workerId, UUID leaseId, Instant now, Duration visibilityTimeout) {
-        state.requireTransitionTo(JobState.RUNNING);
-        return new Job(id, type, payload, priority, maxRetries, attempt + 1, JobState.RUNNING,
+        JobState next = Transition.CLAIM.applyTo(state);
+        return new Job(id, type, payload, priority, maxRetries, attempt + 1, next,
                 scheduledAt, createdAt, now, now.plus(visibilityTimeout),
                 Objects.requireNonNull(workerId, "workerId"),
                 Objects.requireNonNull(leaseId, "leaseId"), lastError);
@@ -159,8 +159,8 @@ public record Job(
 
     /** RUNNING -> COMPLETED: releases the lease. */
     public Job completed(Instant now) {
-        state.requireTransitionTo(JobState.COMPLETED);
-        return new Job(id, type, payload, priority, maxRetries, attempt, JobState.COMPLETED,
+        JobState next = Transition.COMPLETE.applyTo(state);
+        return new Job(id, type, payload, priority, maxRetries, attempt, next,
                 scheduledAt, createdAt, now, null, null, null, lastError);
     }
 
@@ -170,16 +170,16 @@ public record Job(
      * the retry budget.
      */
     private Job failedWithRetryAt(Instant retryAt, String error, Instant now) {
-        state.requireTransitionTo(JobState.FAILED);
-        return new Job(id, type, payload, priority, maxRetries, attempt, JobState.FAILED,
+        JobState next = Transition.FAIL.applyTo(state);
+        return new Job(id, type, payload, priority, maxRetries, attempt, next,
                 Objects.requireNonNull(retryAt, "retryAt"), createdAt, now, null, null, null,
                 error);
     }
 
     /** RUNNING -> DEAD: releases the lease and dead-letters the job. */
     public Job deadLettered(String error, Instant now) {
-        state.requireTransitionTo(JobState.DEAD);
-        return new Job(id, type, payload, priority, maxRetries, attempt, JobState.DEAD,
+        JobState next = Transition.DEAD_LETTER.applyTo(state);
+        return new Job(id, type, payload, priority, maxRetries, attempt, next,
                 scheduledAt, createdAt, now, null, null, null, error);
     }
 
@@ -190,8 +190,8 @@ public record Job(
      * {@link #reclaimed}, which applies this only while a retry is left.
      */
     public Job leaseExpired(Instant now) {
-        state.requireTransitionTo(JobState.PENDING);
-        return new Job(id, type, payload, priority, maxRetries, attempt, JobState.PENDING,
+        JobState next = Transition.LEASE_EXPIRED.applyTo(state);
+        return new Job(id, type, payload, priority, maxRetries, attempt, next,
                 now, createdAt, now, null, null, null,
                 "Visibility timeout expired; job reclaimed from worker " + lockedBy);
     }
@@ -237,8 +237,8 @@ public record Job(
 
     /** SCHEDULED/FAILED -> PENDING: the delay or backoff elapsed and the job is claimable again. */
     public Job promotedToPending(Instant now) {
-        state.requireTransitionTo(JobState.PENDING);
-        return new Job(id, type, payload, priority, maxRetries, attempt, JobState.PENDING,
+        JobState next = Transition.PROMOTE.applyTo(state);
+        return new Job(id, type, payload, priority, maxRetries, attempt, next,
                 scheduledAt, createdAt, now, null, null, null, lastError);
     }
 
@@ -250,8 +250,8 @@ public record Job(
      * id is what keeps a stalled earlier attempt 1 from recording over it.
      */
     public Job manuallyRetried(Instant now) {
-        state.requireTransitionTo(JobState.PENDING);
-        return new Job(id, type, payload, priority, maxRetries, 0, JobState.PENDING,
+        JobState next = Transition.MANUAL_RETRY.applyTo(state);
+        return new Job(id, type, payload, priority, maxRetries, 0, next,
                 now, createdAt, now, null, null, null, lastError);
     }
 }

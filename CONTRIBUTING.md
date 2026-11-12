@@ -99,7 +99,8 @@ each), so upgrading one is a deliberate edit.
 The dependency arrow points inward only:
 
 - `dispatch-core` depends on the JDK and SLF4J. No Spring, no JDBC, no JSON library. If a change
-  to core needs one of those, the change belongs in another module.
+  to core needs one of those, the change belongs in another module. `module-info.java` in core
+  requires only `org.slf4j`, so `javac` refuses `java.sql` there.
 - `dispatch-postgres` depends on `dispatch-core` and JDBC. Still no Spring.
 - `dispatch-api` is the only module that knows Spring exists.
 - `dispatch-lint` depends on the JDK only and on no other module. It is a javac plugin on the

@@ -15,3 +15,9 @@ dependencies {
 
     testRuntimeOnly(rootProject.libs.logback.classic)
 }
+
+tasks.test {
+    // LifecycleDocTest reads the doc, so a change to it must rerun the test rather than replay it.
+    inputs.file(rootProject.file("docs/architecture/job-lifecycle.md"))
+        .withPropertyName("lifecycleDoc")
+}

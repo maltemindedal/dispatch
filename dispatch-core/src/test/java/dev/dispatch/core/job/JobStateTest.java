@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.EnumSet;
-import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,7 +29,7 @@ class JobStateTest {
     @EnumSource(JobState.class)
     @DisplayName("only a RUNNING job can be dead-lettered; an unstarted one is cancelled instead")
     void onlyRunningDeadLetters(JobState state) {
-        assertThat(state.canTransitionTo(JobState.DEAD))
+        assertThat(state.allowedTransitions().contains(JobState.DEAD))
                 .as("%s -> DEAD", state)
                 .isEqualTo(state == JobState.RUNNING);
     }
@@ -39,7 +38,7 @@ class JobStateTest {
     @DisplayName("COMPLETED is a one-way door")
     void completedIsFinal() {
         for (JobState next : JobState.values()) {
-            assertThat(JobState.COMPLETED.canTransitionTo(next))
+            assertThat(JobState.COMPLETED.allowedTransitions().contains(next))
                     .as("COMPLETED -> %s", next)
                     .isFalse();
         }
@@ -48,52 +47,54 @@ class JobStateTest {
     @Test
     @DisplayName("DEAD is escapable only by an operator's manual retry")
     void deadOnlyReturnsToPending() {
-        assertThat(JobState.DEAD.canTransitionTo(JobState.PENDING)).isTrue();
-        assertThat(JobState.DEAD.canTransitionTo(JobState.RUNNING)).isFalse();
-        assertThat(JobState.DEAD.canTransitionTo(JobState.COMPLETED)).isFalse();
+        assertThat(JobState.DEAD.allowedTransitions().contains(JobState.PENDING)).isTrue();
+        assertThat(JobState.DEAD.allowedTransitions().contains(JobState.RUNNING)).isFalse();
+        assertThat(JobState.DEAD.allowedTransitions().contains(JobState.COMPLETED)).isFalse();
     }
 
-    @ParameterizedTest
-    @EnumSource(JobState.class)
-    @DisplayName("no state may transition to itself")
-    void noSelfTransitions(JobState state) {
-        assertThat(state.canTransitionTo(state)).isFalse();
-    }
-
-    @ParameterizedTest
-    @EnumSource(JobState.class)
-    @DisplayName("every state declares a transition set, and the transition check agrees with it")
-    void checkAgreesWithTable(JobState state) {
-        Set<JobState> allowed = state.allowedTransitions();
-        assertThat(allowed).isNotNull();
-        for (JobState next : JobState.values()) {
-            assertThat(state.canTransitionTo(next))
-                    .as("%s -> %s", state, next)
-                    .isEqualTo(allowed.contains(next));
+    @Test
+    @DisplayName("each transition moves to one state, from states other than that one")
+    void transitionsAreWellFormed() {
+        for (Transition transition : Transition.values()) {
+            assertThat(transition.from()).as("%s from", transition).isNotEmpty()
+                    .doesNotContain(transition.to());
         }
     }
 
     @Test
     @DisplayName("an illegal transition throws and says what was allowed")
     void illegalTransitionThrows() {
-        assertThatThrownBy(() -> JobState.PENDING.requireTransitionTo(JobState.COMPLETED))
+        assertThatThrownBy(() -> Transition.COMPLETE.applyTo(JobState.PENDING))
                 .isInstanceOf(IllegalJobTransitionException.class)
                 .hasMessageContaining("PENDING -> COMPLETED")
                 .hasMessageContaining("RUNNING");
 
-        assertThatThrownBy(() -> JobState.COMPLETED.requireTransitionTo(JobState.PENDING))
+        assertThatThrownBy(() -> Transition.MANUAL_RETRY.applyTo(JobState.COMPLETED))
                 .isInstanceOfSatisfying(IllegalJobTransitionException.class, thrown -> {
                     assertThat(thrown.from()).isEqualTo(JobState.COMPLETED);
                     assertThat(thrown.to()).isEqualTo(JobState.PENDING);
+                    assertThat(thrown.transition()).isEqualTo(Transition.MANUAL_RETRY);
                 });
     }
 
     @Test
     @DisplayName("a legal transition is silent")
     void legalTransitionDoesNotThrow() {
-        JobState.PENDING.requireTransitionTo(JobState.RUNNING);
-        JobState.RUNNING.requireTransitionTo(JobState.FAILED);
-        JobState.FAILED.requireTransitionTo(JobState.PENDING);
+        assertThat(Transition.CLAIM.applyTo(JobState.PENDING)).isEqualTo(JobState.RUNNING);
+        assertThat(Transition.FAIL.applyTo(JobState.RUNNING)).isEqualTo(JobState.FAILED);
+        assertThat(Transition.PROMOTE.applyTo(JobState.FAILED)).isEqualTo(JobState.PENDING);
+    }
+
+    @Test
+    @DisplayName("a move into a state is refused from a source state that move does not name")
+    void transitionChecksTheMoveNotThePair() {
+        assertThatThrownBy(() -> Transition.PROMOTE.applyTo(JobState.DEAD))
+                .isInstanceOf(IllegalJobTransitionException.class)
+                .hasMessageContaining("PROMOTE from DEAD");
+        assertThatThrownBy(() -> Transition.LEASE_EXPIRED.applyTo(JobState.FAILED))
+                .isInstanceOf(IllegalJobTransitionException.class);
+        assertThatThrownBy(() -> Transition.MANUAL_RETRY.applyTo(JobState.RUNNING))
+                .isInstanceOf(IllegalJobTransitionException.class);
     }
 
     @Test
