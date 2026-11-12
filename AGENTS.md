@@ -88,7 +88,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   same commit, says the test was red before the fix, and gives the test count change
   (`325 -> 337 tests`). Docs the change touches go in the same commit.
 - PR bodies follow `.github/pull_request_template.md` and say what was not verified locally and
-  why. Merge with a merge commit (`gh pr merge --merge`), the repo's convention.
+  why.
 
 ## Gotchas
 
