@@ -6,6 +6,7 @@ import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
+import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.DocTreeFactory;
 import com.sun.source.util.DocTreePath;
@@ -35,6 +36,7 @@ final class JavaRules extends TreePathScanner<Void, Void> {
     private final DocTrees trees;
     private final CompilationUnitTree unit;
     private final boolean inTestSources;
+    private final boolean inMain;
     private final boolean inCoreMain;
     private boolean reported;
 
@@ -43,6 +45,7 @@ final class JavaRules extends TreePathScanner<Void, Void> {
         this.unit = unit;
         String path = unit.getSourceFile().toUri().getPath();
         this.inTestSources = path.contains("/src/test/") || path.contains("/src/testFixtures/");
+        this.inMain = path.contains("/src/main/");
         this.inCoreMain = path.contains("/dispatch-core/src/main/");
     }
 
@@ -108,14 +111,26 @@ final class JavaRules extends TreePathScanner<Void, Void> {
         return false;
     }
 
-    /** display-name, for a test method: it carries one of the JUnit test annotations. */
+    /** display-name, for a test method, and no-synchronized, for a synchronized method. */
     @Override
     public Void visitMethod(MethodTree method, Void unused) {
         if (inTestSources && trees.getElement(getCurrentPath()) instanceof ExecutableElement element
                 && isTestMethod(element) && !hasAnnotation(element, DISPLAY_NAME)) {
             report(method, Rule.DISPLAY_NAME, "Test method " + method.getName());
         }
+        if (inMain && method.getModifiers().getFlags().contains(Modifier.SYNCHRONIZED)) {
+            report(method, Rule.NO_SYNCHRONIZED);
+        }
         return super.visitMethod(method, unused);
+    }
+
+    /** no-synchronized, for a block. A synchronized method is reported in {@link #visitMethod}. */
+    @Override
+    public Void visitSynchronized(SynchronizedTree block, Void unused) {
+        if (inMain) {
+            report(block, Rule.NO_SYNCHRONIZED);
+        }
+        return super.visitSynchronized(block, unused);
     }
 
     /**

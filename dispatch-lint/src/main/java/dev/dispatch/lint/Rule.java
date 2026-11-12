@@ -16,6 +16,9 @@ enum Rule {
     WALL_CLOCK("wall-clock",
             "%s reads the wall clock. Engine code takes the injected Clock, or the `now` its caller passes "
                     + "(AGENTS.md, Engine code). Only a constructor may default a Clock with Clock.systemUTC()."),
+    NO_SYNCHRONIZED("no-synchronized",
+            "`synchronized` pins a virtual thread to its carrier on Java 21, and handlers run on virtual "
+                    + "threads. Guard the state with a ReentrantLock or a Semaphore (AGENTS.md, Engine code)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

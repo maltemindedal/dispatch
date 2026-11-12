@@ -58,8 +58,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   `wall-clock` rule in `dispatch-lint` fails `Instant.now()`, `System.currentTimeMillis()` and
   `Clock.systemUTC()` in `dispatch-core` main. A constructor may default a `Clock` with
   `Clock.systemUTC()`, as `JobQueue` does.
-- Guard shared state with `ReentrantLock` or `Semaphore`; main code has no `synchronized`. Handlers
-  run on virtual threads, and on this Java 21 toolchain `synchronized` pins them (JDK 24 fixed it).
+- Guard shared state with `ReentrantLock` or `Semaphore`. Handlers run on virtual threads, and on
+  this Java 21 toolchain `synchronized` pins them (JDK 24 fixed it). The `no-synchronized` rule in
+  `dispatch-lint` makes a `synchronized` method or block in main code a compile error.
 - Return refusals as values: `JobActionResult` (`Done`, `NotFound`, `WrongState`) for operator
   actions, `Optional.empty()` for a lost lease. Storage failures surface as `JobStoreException`.
 - Add API, a state transition or a config key in the same change as the code path that uses it.
