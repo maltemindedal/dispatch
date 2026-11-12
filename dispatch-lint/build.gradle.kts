@@ -6,12 +6,12 @@ val checkRepo = tasks.register<JavaExec>("checkRepo") {
     description = "Runs the whole-repo rules over the sources and the indexes the javac plugin wrote."
     val root = rootDir
     val sources = ruled.map { it.file("src") }
-    val indexes = ruled.map { it.layout.buildDirectory.dir("dispatch-lint").get().asFile }
+    val indexes = ruled.map { it.layout.buildDirectory.dir("generated/sources/annotationProcessor").get().asFile }
     val marker = layout.buildDirectory.file("checkRepo.ok")
     dependsOn(ruled.map { it.tasks.withType<JavaCompile>() })
     inputs.files(sources.map { fileTree(it) { include("**/*.java") } })
         .withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("sources")
-    inputs.files(indexes.map { fileTree(it) })
+    inputs.files(indexes.map { fileTree(it) { include("**/*.idx") } })
         .withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("indexes")
     outputs.file(marker)
     classpath = sourceSets.main.get().runtimeClasspath

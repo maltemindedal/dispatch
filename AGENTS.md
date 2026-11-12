@@ -85,7 +85,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - The plugin cannot check `dispatch-lint` itself. Every other module gets it from the root
   `build.gradle.kts`, and each compile task writes an index of the sources the plugin saw. The
   `lint-ran` rule in `checkRepo` fails for a source file that no index names with its current
-  content, so wiring that is lost cannot pass as a clean build.
+  content, so wiring that is lost cannot pass as a clean build. The index is
+  `dispatch-lint.idx` in the task's generated sources directory, which every compile empties
+  first. A compile without the plugin therefore leaves no index, even in a tree that was green.
 - `dispatch-lint/replay.sh <checkout>` runs the per-file rules over another checkout, such as the
   parent of a past fix commit, to show a rule catches the mistake it is for.
 

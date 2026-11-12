@@ -41,8 +41,9 @@ subprojects {
             dependencies.add(project.dependencies.project(":dispatch-lint"))
         }
         tasks.withType<JavaCompile>().configureEach {
-            val index = layout.buildDirectory.file("dispatch-lint/$name.idx")
-            outputs.file(index).withPropertyName("lintIndex")
+            // The index sits in an output directory that every compile empties first, with or
+            // without the plugin. So a compile that lost this wiring leaves no index behind.
+            val index = options.generatedSourceOutputDirectory.file("dispatch-lint.idx")
             // An incremental compile shows the plugin only the changed files, so the index
             // would lose the rest.
             options.isIncremental = false
