@@ -95,7 +95,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - Files that change together. Only some pairs have a test, so check the rest by hand:
   - Engine defaults: `QueueConfig.Builder` or `ExponentialBackoffRetryPolicy`,
     `dispatch-api/src/main/resources/application.yml` (its bound values override the engine's
-    under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`.
+    under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`
+    (`ConfigurationDocTableTest` checks its key and default table against the bound
+    `application.yml` keys).
   - Lifecycle: the transition table and ASCII diagram in `JobState`, the mermaid diagram in
     `docs/architecture/job-lifecycle.md`, and the `CHECK` list in
     `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. Only the last is tested, by
