@@ -81,6 +81,9 @@ public record QueueConfig(
      * hand its values straight over, and it puts the defaults in exactly one place, here.
      */
     public static final class Builder {
+
+        private Builder() {}
+
         private String workerId = generateWorkerId();
         private int concurrency = 16;
         private int claimBatchSize = 8;
