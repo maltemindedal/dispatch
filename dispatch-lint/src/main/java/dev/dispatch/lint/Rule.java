@@ -10,6 +10,9 @@ enum Rule {
     JUNIT_ASSERT("junit-assert",
             "%s is a JUnit assertion. Assert with AssertJ: `assertThat(...)`, or `assertThatThrownBy(...)` "
                     + "for an exception (AGENTS.md, Tests)."),
+    DISPLAY_NAME("display-name",
+            "%s has no @DisplayName. Add `@DisplayName(\"<one sentence saying what it checks>\")`. "
+                    + "A `name =` on @ParameterizedTest is extra, not a replacement (AGENTS.md, Tests)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

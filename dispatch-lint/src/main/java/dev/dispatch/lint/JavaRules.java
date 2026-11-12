@@ -1,8 +1,10 @@
 package dev.dispatch.lint;
 
+import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.DocTreeFactory;
 import com.sun.source.util.DocTreePath;
@@ -11,9 +13,13 @@ import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
 import java.util.List;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeKind;
 import javax.tools.Diagnostic;
 
 /**
@@ -21,6 +27,10 @@ import javax.tools.Diagnostic;
  * constant and one visit method here, with a bad and a good fixture in the tests.
  */
 final class JavaRules extends TreePathScanner<Void, Void> {
+    private static final String DISPLAY_NAME = "org.junit.jupiter.api.DisplayName";
+    private static final List<String> TEST_ANNOTATIONS = List.of("org.junit.jupiter.api.Test",
+            "org.junit.jupiter.params.ParameterizedTest", "org.junit.jupiter.api.RepeatedTest");
+
     private final DocTrees trees;
     private final CompilationUnitTree unit;
     private final boolean inTestSources;
@@ -72,6 +82,57 @@ final class JavaRules extends TreePathScanner<Void, Void> {
             report(call.getMethodSelect(), Rule.JUNIT_ASSERT, "Assertions." + method.getSimpleName());
         }
         return super.visitMethodInvocation(call, unused);
+    }
+
+    /** display-name, for a test method: it carries one of the JUnit test annotations. */
+    @Override
+    public Void visitMethod(MethodTree method, Void unused) {
+        if (inTestSources && trees.getElement(getCurrentPath()) instanceof ExecutableElement element
+                && isTestMethod(element) && !hasAnnotation(element, DISPLAY_NAME)) {
+            report(method, Rule.DISPLAY_NAME, "Test method " + method.getName());
+        }
+        return super.visitMethod(method, unused);
+    }
+
+    /**
+     * display-name, for a test class: a concrete class that declares or inherits a test method.
+     * An abstract base is exempt because its subclasses carry the name, and a class with no test
+     * method is a helper.
+     */
+    @Override
+    public Void visitClass(ClassTree type, Void unused) {
+        if (inTestSources && trees.getElement(getCurrentPath()) instanceof TypeElement element
+                && element.getKind() == ElementKind.CLASS && !element.getModifiers().contains(Modifier.ABSTRACT)
+                && hasTestMethod(element) && !hasAnnotation(element, DISPLAY_NAME)) {
+            report(type, Rule.DISPLAY_NAME, "Test class " + element.getSimpleName());
+        }
+        return super.visitClass(type, unused);
+    }
+
+    private static boolean hasTestMethod(TypeElement type) {
+        for (Element current = type; current instanceof TypeElement t;
+                current = t.getSuperclass() instanceof DeclaredType parent && parent.getKind() != TypeKind.NONE
+                        ? parent.asElement() : null) {
+            for (Element member : t.getEnclosedElements()) {
+                if (member instanceof ExecutableElement method && isTestMethod(method)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean isTestMethod(ExecutableElement method) {
+        return TEST_ANNOTATIONS.stream().anyMatch(annotation -> hasAnnotation(method, annotation));
+    }
+
+    private static boolean hasAnnotation(Element element, String qualifiedName) {
+        for (AnnotationMirror mirror : element.getAnnotationMirrors()) {
+            if (((TypeElement) mirror.getAnnotationType().asElement()).getQualifiedName().contentEquals(qualifiedName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

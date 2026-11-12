@@ -34,6 +34,7 @@ class JobSubmissionTest {
             "9999-12-31T23:59:59Z",
             "9999-12-31T23:59:59.500Z",
             "9999-12-31T23:59:59.999999999Z"})
+    @DisplayName("instants from year 0001 to the last of 9999 are accepted")
     void instantsInsideTheFourDigitYearRangeAreAccepted(String instant) {
         assertThatCode(() -> scheduledAt(Instant.parse(instant))).doesNotThrowAnyException();
     }
@@ -48,6 +49,7 @@ class JobSubmissionTest {
             "+300000-01-01T00:00:00Z",
             "-1000000000-01-01T00:00:00Z",
             "+1000000000-12-31T23:59:59.999999999Z"})
+    @DisplayName("instants outside years 0001 to 9999 are rejected, and the message gives the range")
     void instantsOutsideTheRangeAreRejectedWithTheRangeInTheMessage(String instant) {
         assertThatThrownBy(() -> scheduledAt(Instant.parse(instant)))
                 .isInstanceOf(IllegalArgumentException.class)

@@ -93,7 +93,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 
 ### Tests
 
-- Every test class and method carries a `@DisplayName` sentence.
+- Every test class and method carries a `@DisplayName` sentence. The `display-name` rule in
+  `dispatch-lint` fails a `@Test`, `@ParameterizedTest` or `@RepeatedTest` method, and a concrete
+  class that declares or inherits one, without it. A `name =` on `@ParameterizedTest` is extra, not
+  a replacement. Abstract bases and classes without tests are exempt.
 - Assert with AssertJ. The `junit-assert` rule in `dispatch-lint` makes a call to
   `org.junit.jupiter.api.Assertions` a compile error that names `assertThat` and
   `assertThatThrownBy`.
