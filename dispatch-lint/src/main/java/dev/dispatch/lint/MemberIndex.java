@@ -22,6 +22,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -50,6 +51,7 @@ import javax.lang.model.util.Types;
  * <p>An enum constant is also referenced when code reads all constants of its enum at once
  * ({@code values()}, {@code valueOf}, an {@code EnumSet} over the whole enum), and when Spring or
  * Jackson binds it by name into a {@code @ConfigurationProperties} type or a {@code web.dto} type.
+ * A factory method is referenced by the {@code @MethodSource} that names it.
  */
 final class MemberIndex extends TreePathScanner<Void, Void> {
     private static final List<String> FRAMEWORKS =
@@ -58,6 +60,7 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
             ElementKind.METHOD, ElementKind.CONSTRUCTOR, ElementKind.FIELD, ElementKind.ENUM_CONSTANT);
     private static final String CONFIGURATION_PROPERTIES =
             "org.springframework.boot.context.properties.ConfigurationProperties";
+    private static final String METHOD_SOURCE = "org.junit.jupiter.params.provider.MethodSource";
     /** JDK methods whose result holds or is drawn from every constant of the enum in their return type. */
     private static final Set<String> READS_ALL_CONSTANTS = Set.of(
             "java.util.EnumSet#allOf", "java.util.EnumSet#noneOf", "java.util.EnumSet#range",
@@ -104,6 +107,10 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
     @Override
     public Void visitMethod(MethodTree method, Void unused) {
         declare(method);
+        if (trees.getElement(getCurrentPath()) instanceof ExecutableElement test
+                && test.getEnclosingElement() instanceof TypeElement owner) {
+            referenceMethodSources(test, owner);
+        }
         return super.visitMethod(method, unused);
     }
 
@@ -229,6 +236,45 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
         return found;
     }
 
+    /**
+     * JUnit calls the factories a {@code @MethodSource} names: {@code name} in the test's own
+     * class, {@code some.Type#name} in another, or the test's own name when it gives none.
+     */
+    private void referenceMethodSources(ExecutableElement test, TypeElement owner) {
+        for (AnnotationMirror annotation : test.getAnnotationMirrors()) {
+            if (!annotationName(annotation).equals(METHOD_SOURCE)) {
+                continue;
+            }
+            List<String> factories = new ArrayList<>();
+            annotation.getElementValues().forEach((element, value) -> {
+                if (element.getSimpleName().contentEquals("value") && value.getValue() instanceof List<?> names) {
+                    names.forEach(name -> factories.add(((AnnotationValue) name).getValue().toString()));
+                }
+            });
+            if (factories.isEmpty()) {
+                factories.add(test.getSimpleName().toString());
+            }
+            for (String factory : factories) {
+                String named = factory.replaceFirst("\\(.*", "");
+                int hash = named.indexOf('#');
+                TypeElement type = hash < 0 ? owner
+                        : elements.getTypeElement(named.substring(0, hash).replace('$', '.'));
+                if (type != null) {
+                    referenceMethodsNamed(named.substring(hash + 1), type, test);
+                }
+            }
+        }
+    }
+
+    private void referenceMethodsNamed(String name, TypeElement type, ExecutableElement except) {
+        for (Element member : elements.getAllMembers(type)) {
+            if (member.getKind() == ElementKind.METHOD && member.getSimpleName().contentEquals(name)
+                    && !member.equals(except) && member.getEnclosingElement() instanceof TypeElement declaring) {
+                lines.add(SourceIndex.referenced(key(declaring, member)));
+            }
+        }
+    }
+
     private void referenceConstants(TypeElement enumType) {
         for (Element constant : enumType.getEnclosedElements()) {
             if (constant.getKind() == ElementKind.ENUM_CONSTANT) {
@@ -270,12 +316,15 @@ final class MemberIndex extends TreePathScanner<Void, Void> {
 
     private static boolean hasAnnotationFrom(Element element, List<String> packages) {
         for (AnnotationMirror annotation : element.getAnnotationMirrors()) {
-            String name = ((TypeElement) annotation.getAnnotationType().asElement()).getQualifiedName().toString();
-            if (packages.stream().anyMatch(name::startsWith)) {
+            if (packages.stream().anyMatch(annotationName(annotation)::startsWith)) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static String annotationName(AnnotationMirror annotation) {
+        return ((TypeElement) annotation.getAnnotationType().asElement()).getQualifiedName().toString();
     }
 
     private boolean isInWebDto(TypeElement type) {

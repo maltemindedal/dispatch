@@ -238,6 +238,67 @@ class UnusedSurfaceTest {
     }
 
     @Test
+    @DisplayName("counts a factory that a @MethodSource names, in its own class or another, as called")
+    void countsAMethodSourceFactory() throws IOException {
+        Fixture.write(root, "main/org/junit/jupiter/params/provider/MethodSource.java", """
+                package org.junit.jupiter.params.provider;
+
+                public @interface MethodSource {
+                    String[] value() default {};
+                }
+                """);
+        Fixture.write(root, "testFixtures/app/Contract.java", """
+                package app;
+
+                import org.junit.jupiter.params.provider.MethodSource;
+
+                public abstract class Contract {
+                    static int[] sizes() {
+                        return new int[0];
+                    }
+
+                    static int[] sameName() {
+                        return new int[0];
+                    }
+
+                    static int[] unnamed() {
+                        return new int[0];
+                    }
+
+                    @MethodSource({"sizes", "app.Cases$Nested#limits(int)"})
+                    void first(int size) {}
+
+                    @MethodSource
+                    void sameName(int size) {}
+                }
+                """);
+        Fixture.write(root, "testFixtures/app/Cases.java", """
+                package app;
+
+                public class Cases {
+                    public static class Nested {
+                        public static int[] limits(int seed) {
+                            return new int[0];
+                        }
+                    }
+                }
+                """);
+        Fixture.write(root, "test/app/OtherTest.java", """
+                package app;
+
+                import org.junit.jupiter.params.provider.MethodSource;
+
+                class OtherTest {
+                    @MethodSource("app.Missing#gone")
+                    void second(int size) {}
+                }
+                """);
+
+        assertThat(findings()).containsExactly("src/testFixtures/app/Contract.java:14: error: [unused-surface] "
+                + "Contract.unnamed() is package-private" + FIX);
+    }
+
+    @Test
     @DisplayName("exempts main(String[]), and no other method named main")
     void exemptsTheEntryPoint() throws IOException {
         Fixture.write(root, "main/app/Application.java", """
