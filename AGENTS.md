@@ -132,8 +132,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   what to write instead. Using "lock" or "filter" for them stays a review point, since
   `ReentrantLock`, `JobFilter` and `locked_until` are real names.
 - Write docs, Javadoc and comments in plain, short sentences with no em dashes: the owner removed
-  all 216 in `ffca785`. The `em-dash` rule in `checkRepo` fails the build on U+2014 in any tracked
-  `.md`, `.java`, `.yml`, `.kts`, `.sql`, `.sh`, `.toml` or `.properties` file.
+  all 216 in `ffca785`. The `em-dash` rule in `checkRepo` fails the build on U+2014 in any tracked or
+  untracked-but-not-ignored `.md`, `.java`, `.yml`, `.yaml`, `.kts`, `.sql`, `.sh`, `.toml` or
+  `.properties` file. A text file that is not UTF-8 fails the `not-utf8` rule.
 - Commit subjects are imperative and sentence case, with no Conventional Commits prefix. The body
   explains why. A bug fix opens its body with `BUG FIX.`, lands with its regression test in the
   same commit, says the test was red before the fix, and gives the test count change

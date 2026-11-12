@@ -1,6 +1,7 @@
 package dev.dispatch.lint;
 
 import java.io.IOException;
+import java.nio.charset.MalformedInputException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,12 +40,18 @@ final class TextRules {
                 continue;
             }
             boolean prose = file.endsWith(".md") || file.endsWith(".yml") || file.endsWith(".yaml");
-            List<String> lines = Files.readAllLines(root.resolve(file), StandardCharsets.UTF_8);
+            List<String> lines;
+            try {
+                lines = Files.readAllLines(root.resolve(file), StandardCharsets.UTF_8);
+            } catch (MalformedInputException e) {
+                findings.add(file + ": error: " + Rule.NOT_UTF8.message());
+                continue;
+            }
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
                 String where = file + ":" + (i + 1) + ": error: ";
                 if (line.indexOf(EM_DASH) >= 0) {
-                    findings.add(where + Rule.EM_DASH.message());
+                    findings.add(where + Rule.EM_DASH.message(Character.toString(EM_DASH)));
                 }
                 Matcher placeholder = PLACEHOLDER.matcher(line);
                 if (prose && placeholder.find()) {

@@ -1,7 +1,10 @@
 package dev.dispatch.lint;
 
 import java.io.File;
+import java.io.FileDescriptor;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,7 +31,8 @@ public final class RepoCheck {
             findings.addAll(sourcesThePluginMissed(root, paths(args[1]), paths(args[2])));
         }
         findings.addAll(TextRules.check(root, trackedFiles(root)));
-        findings.forEach(System.err::println);
+        PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
+        findings.forEach(err::println);
         if (!findings.isEmpty()) {
             System.exit(1);
         }
@@ -53,8 +57,12 @@ public final class RepoCheck {
         return findings;
     }
 
-    /** Tracked files plus untracked ones git does not ignore, so a new file is checked before it is added. */
-    private static List<String> trackedFiles(Path root) throws IOException {
+    /**
+     * Tracked files plus untracked ones git does not ignore, so a new file is checked before it is
+     * added. A tracked file deleted or moved but not yet staged is still listed by git, so only
+     * files that exist in the working tree are returned.
+     */
+    static List<String> trackedFiles(Path root) throws IOException {
         Process git = new ProcessBuilder("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
                 .directory(root.toFile())
                 .redirectError(ProcessBuilder.Redirect.INHERIT)
@@ -68,7 +76,9 @@ public final class RepoCheck {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted while listing files", e);
         }
-        return Stream.of(listing.split("\0")).filter(name -> !name.isEmpty()).toList();
+        return Stream.of(listing.split("\0")).filter(name -> !name.isEmpty())
+                .filter(name -> Files.isRegularFile(root.resolve(name)))
+                .toList();
     }
 
     private static List<Path> filesUnder(List<Path> dirs, String suffix) throws IOException {

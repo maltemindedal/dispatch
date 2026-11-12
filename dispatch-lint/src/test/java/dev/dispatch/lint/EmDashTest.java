@@ -12,7 +12,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 @DisplayName("The em-dash rule")
 class EmDashTest {
-    private static final String FINDING = ": error: [em-dash] An em dash. Write two short sentences "
+    private static final String FINDING = ": error: [em-dash] `" + Character.toString(0x2014)
+            + "` is an em dash (U+2014). Write two short sentences "
             + "instead (AGENTS.md, Prose, commits and PRs).";
 
     private static final String DASH = Character.toString(0x2014);
@@ -43,6 +44,17 @@ class EmDashTest {
         Files.writeString(root.resolve("a.md"), "a - b and 2020" + Character.toString(0x2013) + "2024\n");
 
         assertThat(TextRules.check(root, List.of("a.md"))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("reports a text file that is not UTF-8 by name instead of crashing")
+    void reportsANonUtf8TextFile() throws IOException {
+        Files.write(root.resolve("a.md"), new byte[] {'a', (byte) 0xFF, '\n'});
+
+        assertThat(TextRules.check(root, List.of("a.md")))
+                .singleElement()
+                .asString()
+                .startsWith("a.md: error: [not-utf8] ");
     }
 
     @Test
