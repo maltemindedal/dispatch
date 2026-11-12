@@ -13,7 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,14 +47,16 @@ public final class WorkerPool implements AutoCloseable {
     private enum State {
         /** Built, nothing started. */
         NEW,
-        /** The first {@link #dispatchOnce} caller is mid-setup; nobody may cycle yet. */
-        STARTING,
         /** {@link #start} spawned a dispatcher thread, which is claiming on its own. */
         RUNNING,
         /** A caller is driving cycles by hand with {@link #dispatchOnce}; no dispatcher thread. */
         DRIVEN,
         STOPPING,
-        TERMINATED
+        TERMINATED;
+
+        boolean mayClaim() {
+            return this == RUNNING || this == DRIVEN;
+        }
     }
 
     private final JobStore store;
@@ -63,11 +65,21 @@ public final class WorkerPool implements AutoCloseable {
     private final Clock clock;
     private final ClaimCapacity capacity;
     private final AttemptRunner runner;
-    private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
 
+    /**
+     * Makes each lifecycle move one step: the state and the executor and dispatcher it implies
+     * change together. Without it a {@code shutdown()} landing inside {@code start()} found
+     * nothing to stop, and the dispatcher started after the pool was shut down. Nothing waits
+     * while holding it, and the dispatcher thread never takes it.
+     */
+    private final ReentrantLock lifecycle = new ReentrantLock();
+
+    /** Written under {@link #lifecycle}, and only forward: a pool never leaves TERMINATED. */
+    private volatile State state = State.NEW;
+    /** Set in the step that leaves NEW for RUNNING or DRIVEN. */
     private volatile ExecutorService executor;
+    /** Set, and started, in the step that leaves NEW for RUNNING. */
     private volatile BackgroundLoop dispatcher;
-    private volatile boolean accepting;
 
     public WorkerPool(
             JobStore store,
@@ -86,36 +98,33 @@ public final class WorkerPool implements AutoCloseable {
 
     /** Starts the dispatcher. Idempotent-ish: starting twice is a programming error and throws. */
     public void start() {
-        if (!state.compareAndSet(State.NEW, State.RUNNING)) {
-            throw new IllegalStateException("WorkerPool already started (state=" + state.get() + ")");
-        }
-        beginAccepting();
-        BackgroundLoop loop = new BackgroundLoop(config.workerId() + "-dispatcher",
-                Duration.ZERO, config.pollInterval(), () -> !dispatchCycle().isEmpty());
-        dispatcher = loop;
-        // A shutdown() that ran before the line above found no loop to stop. It cleared the flag
-        // first, so the loop is not started for it.
-        if (accepting) {
-            loop.start();
+        lifecycle.lock();
+        try {
+            if (state != State.NEW) {
+                throw new IllegalStateException("WorkerPool already started (state=" + state + ")");
+            }
+            executor = newExecutor();
+            dispatcher = new BackgroundLoop(config.workerId() + "-dispatcher",
+                    Duration.ZERO, config.pollInterval(), () -> !dispatchCycle().isEmpty());
+            // Before the loop starts, or its first cycle would see NEW and claim nothing.
+            state = State.RUNNING;
+            dispatcher.start();
+        } finally {
+            lifecycle.unlock();
         }
         log.info("Worker pool {} started: concurrency={}, batch={}, visibilityTimeout={}",
                 config.workerId(), config.concurrency(), config.claimBatchSize(),
                 config.visibilityTimeout());
     }
 
-    /**
-     * Executor first, then the flag: {@code accepting} is what other threads test before they
-     * touch {@code executor}, so it must be the last thing published.
-     */
-    private void beginAccepting() {
-        executor = Executors.newThreadPerTaskExecutor(
+    private ExecutorService newExecutor() {
+        return Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name(config.workerId() + "-job-", 0).factory());
-        accepting = true;
     }
 
     /** True while a dispatcher thread of this pool's own is claiming. */
     public boolean isRunning() {
-        return state.get() == State.RUNNING;
+        return state == State.RUNNING;
     }
 
     /** Free claim-capacity permits; equals {@code concurrency} when nothing is in flight. */
@@ -152,22 +161,19 @@ public final class WorkerPool implements AutoCloseable {
      * @throws InterruptedException if interrupted while waiting for claim capacity
      */
     public DispatchResult dispatchOnce() throws InterruptedException {
-        // Whoever wins the CAS does the one-time setup; everyone else must see it finished before
-        // they cycle. That is why the setup happens under STARTING rather than DRIVEN: a second
-        // caller cannot slip past the guard while the executor is still null.
-        if (state.compareAndSet(State.NEW, State.STARTING)) {
-            beginAccepting();
-            if (!state.compareAndSet(State.STARTING, State.DRIVEN)) {
-                // shutdown() got in between. It may have run before the executor existed, so
-                // close it here; nothing was ever submitted to it.
-                executor.shutdown();
+        lifecycle.lock();
+        try {
+            if (state == State.NEW) {
+                executor = newExecutor();
+                state = State.DRIVEN;
             }
-        }
-        State current = state.get();
-        if (current != State.DRIVEN) {
-            throw new IllegalStateException(
-                    "dispatchOnce() needs a pool nobody else is claiming for (state="
-                    + current + ")");
+            if (state != State.DRIVEN) {
+                throw new IllegalStateException(
+                        "dispatchOnce() needs a pool nobody else is claiming for (state="
+                        + state + ")");
+            }
+        } finally {
+            lifecycle.unlock();
         }
         return dispatchCycle();
     }
@@ -181,7 +187,7 @@ public final class WorkerPool implements AutoCloseable {
         // handed to the executor owns its permit from then on and returns it itself.
         int owed = budget;
         try {
-            if (!accepting) {
+            if (!state.mayClaim()) {
                 return DispatchResult.nothing(budget);
             }
 
@@ -286,23 +292,28 @@ public final class WorkerPool implements AutoCloseable {
      * @return true if everything drained within the deadline
      */
     public boolean shutdown(Duration drainDeadline) {
-        State previous = state.getAndSet(State.STOPPING);
-        if (previous == State.NEW || previous == State.TERMINATED) {
-            state.set(State.TERMINATED);
-            return true;
+        BackgroundLoop loop;
+        ExecutorService pool;
+        lifecycle.lock();
+        try {
+            if (state == State.NEW || state == State.TERMINATED) {
+                state = State.TERMINATED;
+                return true;
+            }
+            // A second shutdown() during the first one's drain finds STOPPING and waits on the
+            // same executor.
+            state = State.STOPPING;
+            loop = dispatcher;
+            pool = executor;
+        } finally {
+            lifecycle.unlock();
         }
-        // A DRIVEN pool has no dispatcher thread to stop, but it does have in-flight jobs to
-        // drain, so it takes the same path from here. So does STARTING: the null checks below
-        // cover whatever the interrupted setup had not yet created, and dispatchOnce() sees the
-        // STOPPING it lost the race to and cleans up its side.
 
         log.info("Worker pool {} shutting down: no longer claiming, draining {} in-flight job(s), "
                 + "deadline {}", config.workerId(), metrics.inFlight(), drainDeadline);
 
         // 1. Stop claiming. The dispatcher may be blocked on the semaphore or parked; interrupt
-        //    breaks it out of either.
-        accepting = false;
-        BackgroundLoop loop = dispatcher;
+        //    breaks it out of either. A DRIVEN pool has no dispatcher, only jobs to drain.
         if (loop != null) {
             loop.stop();
             loop.awaitStopped(Duration.ofSeconds(5));
@@ -310,25 +321,27 @@ public final class WorkerPool implements AutoCloseable {
 
         // 2. Let in-flight handlers finish.
         boolean drained = false;
-        ExecutorService pool = executor;
-        if (pool != null) {
-            pool.shutdown();
-            try {
-                drained = pool.awaitTermination(drainDeadline.toMillis(), TimeUnit.MILLISECONDS);
-                if (!drained) {
-                    // 3. Deadline passed: interrupt the stragglers.
-                    log.warn("Worker pool {} did not drain within {}; interrupting {} job(s)",
-                            config.workerId(), drainDeadline, metrics.inFlight());
-                    pool.shutdownNow();
-                    pool.awaitTermination(5, TimeUnit.SECONDS);
-                }
-            } catch (InterruptedException e) {
+        pool.shutdown();
+        try {
+            drained = pool.awaitTermination(drainDeadline.toMillis(), TimeUnit.MILLISECONDS);
+            if (!drained) {
+                // 3. Deadline passed: interrupt the stragglers.
+                log.warn("Worker pool {} did not drain within {}; interrupting {} job(s)",
+                        config.workerId(), drainDeadline, metrics.inFlight());
                 pool.shutdownNow();
-                Thread.currentThread().interrupt();
+                pool.awaitTermination(5, TimeUnit.SECONDS);
             }
+        } catch (InterruptedException e) {
+            pool.shutdownNow();
+            Thread.currentThread().interrupt();
         }
 
-        state.set(State.TERMINATED);
+        lifecycle.lock();
+        try {
+            state = State.TERMINATED;
+        } finally {
+            lifecycle.unlock();
+        }
         log.info("Worker pool {} stopped (clean drain: {})", config.workerId(), drained);
         return drained;
     }
