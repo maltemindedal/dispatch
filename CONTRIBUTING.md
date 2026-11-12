@@ -118,4 +118,6 @@ There is no suppression: a rule's exemptions live in its code, in
 One rule looks across modules. `./gradlew check` fails on a non-private member of main or
 testFixtures code that nothing in any module calls, for example
 `error: [unused-surface] JobQueue.config() is public and nothing in any module calls it`. Add a
-member in the same change as its first caller. A call from a test counts.
+member in the same change as its first caller. A call from a test counts. `JobContext` is exempt
+because handler authors call it, so its public methods must match the table in
+`docs/guides/writing-a-handler.md`.

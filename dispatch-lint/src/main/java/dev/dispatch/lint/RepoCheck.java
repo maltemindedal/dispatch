@@ -11,7 +11,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -21,8 +25,11 @@ import java.util.stream.Stream;
  * javac run over a checkout leaves one index: it skips lint-ran, which that index cannot pass.
  */
 public final class RepoCheck {
-    private static final Set<String> HANDLER_API = Set.of(
-            "dev.dispatch.core.handler.JobContext", "dev.dispatch.core.handler.PermanentJobFailureException");
+    private static final String JOB_CONTEXT = "dev.dispatch.core.handler.JobContext";
+    private static final Set<String> HANDLER_API =
+            Set.of(JOB_CONTEXT, "dev.dispatch.core.handler.PermanentJobFailureException");
+    private static final String HANDLER_GUIDE = "docs/guides/writing-a-handler.md";
+    private static final Pattern TABLE_METHOD = Pattern.compile("`(\\w+)\\(");
 
     private RepoCheck() {}
 
@@ -35,6 +42,7 @@ public final class RepoCheck {
             findings.addAll(sourcesThePluginMissed(root, paths(args[1]), indexDirs));
         }
         findings.addAll(membersNothingCalls(indexDirs));
+        findings.addAll(handlerApiTheGuideMisstates(root, indexDirs));
         findings.addAll(TextRules.check(root, trackedFiles(root)));
         PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
         findings.forEach(err::println);
@@ -100,6 +108,49 @@ public final class RepoCheck {
             }
         }
         return findings.stream().sorted().distinct().toList();
+    }
+
+    /**
+     * handler-api: the price of the unused-surface exemption. JobContext's public methods have no
+     * caller here because handler authors call them, so the guide those authors read must list
+     * exactly the methods there are.
+     */
+    static List<String> handlerApiTheGuideMisstates(Path root, List<Path> indexDirs) throws IOException {
+        Map<String, String> declared = new TreeMap<>();
+        for (Path index : filesUnder(indexDirs, ".idx")) {
+            for (String line : Files.readAllLines(index)) {
+                String[] member = line.split(" ", 5);
+                if (line.startsWith("D " + JOB_CONTEXT + "#") && member[2].equals("public")
+                        && !member[1].contains("#<init>")) {
+                    declared.put(member[1].substring(member[1].indexOf('#') + 1, member[1].indexOf('(')), member[3]);
+                }
+            }
+        }
+        Map<String, Integer> documented = new TreeMap<>();
+        Path guide = root.resolve(HANDLER_GUIDE);
+        List<String> rows = Files.exists(guide) ? Files.readAllLines(guide) : List.of();
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).startsWith("|")) {
+                Matcher method = TABLE_METHOD.matcher(rows.get(i).split("\\|")[1]);
+                while (method.find()) {
+                    documented.put(method.group(1), i + 1);
+                }
+            }
+        }
+        List<String> findings = new ArrayList<>();
+        declared.forEach((name, where) -> {
+            if (!documented.containsKey(name)) {
+                findings.add(where + ": error: " + Rule.HANDLER_API.message(
+                        "JobContext." + name + "() is public, and the table does not list it"));
+            }
+        });
+        documented.forEach((name, line) -> {
+            if (!declared.isEmpty() && !declared.containsKey(name)) {
+                findings.add(HANDLER_GUIDE + ":" + line + ": error: " + Rule.HANDLER_API.message(
+                        "The table lists `" + name + "()`, and JobContext has no public method of that name"));
+            }
+        });
+        return findings;
     }
 
     /**
