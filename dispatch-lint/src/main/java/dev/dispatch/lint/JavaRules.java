@@ -2,11 +2,13 @@ package dev.dispatch.lint;
 
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.MemberSelectTree;
-import com.sun.source.tree.Scope;
 import com.sun.source.tree.Tree;
+import com.sun.source.util.DocTreeFactory;
+import com.sun.source.util.DocTreePath;
+import com.sun.source.util.DocTrees;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
-import com.sun.source.util.Trees;
+import java.util.List;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.TypeElement;
@@ -17,11 +19,11 @@ import javax.tools.Diagnostic;
  * constant and one visit method here, with a bad and a good fixture in the tests.
  */
 final class JavaRules extends TreePathScanner<Void, Void> {
-    private final Trees trees;
+    private final DocTrees trees;
     private final CompilationUnitTree unit;
     private boolean reported;
 
-    JavaRules(Trees trees, CompilationUnitTree unit) {
+    JavaRules(DocTrees trees, CompilationUnitTree unit) {
         this.trees = trees;
         this.unit = unit;
     }
@@ -63,25 +65,25 @@ final class JavaRules extends TreePathScanner<Void, Void> {
         return trees.getSourcePositions().getStartPosition(unit, tree) >= 0;
     }
 
-    /** True when the simple name already resolves to a different type here, so an import cannot fix it. */
+    /**
+     * True when the simple name already resolves to a different type here, so an import would
+     * change what the name means or could not take effect.
+     */
     private boolean simpleNameMeansAnotherType(Element type) {
-        for (Scope scope = trees.getScope(getCurrentPath()); scope != null; scope = scope.getEnclosingScope()) {
-            if (namesAnotherType(scope.getLocalElements(), type) || scope.getEnclosingClass() != null
-                    && namesAnotherType(scope.getEnclosingClass().getEnclosedElements(), type)) {
-                return true;
-            }
-        }
-        return false;
+        Element named = resolve(type.getSimpleName());
+        return named != null && !named.equals(type) && (named.getKind().isClass()
+                || named.getKind().isInterface() || named.getKind() == ElementKind.TYPE_PARAMETER);
     }
 
-    private static boolean namesAnotherType(Iterable<? extends Element> inScope, Element type) {
-        for (Element element : inScope) {
-            if ((element.getKind().isClass() || element.getKind().isInterface())
-                    && element.getSimpleName().contentEquals(type.getSimpleName()) && !element.equals(type)) {
-                return true;
-            }
-        }
-        return false;
+    /**
+     * What javac resolves a name to at the current position. Its only public entry to scope
+     * resolution is the reference of a doc comment link, so this asks as if {@code {@link name}}
+     * stood here.
+     */
+    private Element resolve(CharSequence name) {
+        DocTreeFactory docs = trees.getDocTreeFactory();
+        DocTreePath comment = new DocTreePath(getCurrentPath(), docs.newDocCommentTree(List.of(), List.of()));
+        return trees.getElement(new DocTreePath(comment, docs.newReferenceTree(name.toString())));
     }
 
     boolean reported() {

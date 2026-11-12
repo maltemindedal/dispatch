@@ -66,7 +66,7 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - Import types instead of writing them fully qualified inline. The `inline-fqn` rule in
   `dispatch-lint` makes one a compile error that names the import, in `package-info.java` and
   `module-info.java` too. A qualified name stays legal only where the simple name already means
-  another type.
+  another type. The rule asks javac what the simple name resolves to at that position.
 - Spring Boot 4, Jackson 3 and Testcontainers 2 may postdate your training. Jackson lives in
   `tools.jackson.*` (`StringNode` replaced `TextNode`), Boot's test support is split into modules
   such as `spring-boot-resttestclient`, and the container class is

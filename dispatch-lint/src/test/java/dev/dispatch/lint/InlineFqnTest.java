@@ -83,6 +83,83 @@ class InlineFqnTest {
     }
 
     @Test
+    @DisplayName("accepts a qualified type whose simple name means a type of the same package")
+    void acceptsATypeASamePackageTypeHides() {
+        Fixture.write(root, "app/Instant.java", "package app; class Instant {}");
+        Fixture.write(root, "app/Uses.java", """
+                package app;
+
+                class Uses {
+                    Instant own;
+                    java.time.Instant qualified = java.time.Instant.now();
+                }
+                """);
+
+        assertThat(Fixture.compile(root)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("accepts a qualified type whose simple name means an inherited nested type")
+    void acceptsATypeAnInheritedNestedTypeHides() {
+        Fixture.write(root, "Base.java", "class Base { static class Duration {} }");
+        Fixture.write(root, "Derived.java", """
+                class Derived extends Base {
+                    Duration own;
+
+                    java.time.Duration qualified() {
+                        return java.time.Duration.ZERO;
+                    }
+                }
+                """);
+
+        assertThat(Fixture.compile(root)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("accepts a qualified type whose simple name means a type parameter or an on-demand import")
+    void acceptsATypeATypeParameterOrOnDemandImportHides() {
+        assertThat(Fixture.compile(root, "Hidden.java", """
+                import java.awt.*;
+
+                class Hidden {
+                    List awt;
+                    java.util.List<String> qualified;
+
+                    <Instant> Instant generic(Instant given, java.time.Instant qualified) {
+                        return given;
+                    }
+                }
+                """)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("reports a qualified type whose simple name means a type only somewhere else in the file")
+    void reportsWhereTheSimpleNameIsFree() {
+        assertThat(Fixture.compile(root, "Scoped.java", """
+                class Scoped {
+                    java.time.Instant free;
+                    java.lang.String sameType;
+
+                    static class Inner {
+                        java.time.Instant hidden;
+
+                        class Instant {}
+                    }
+
+                    void local() {
+                        java.time.Duration before;
+                        class Duration {}
+                        java.time.Duration after;
+                    }
+                }
+                """)).extracting(error -> error.substring(0, error.indexOf(" is written")))
+                .containsExactly(
+                        "2:14: [inline-fqn] java.time.Instant",
+                        "3:14: [inline-fqn] java.lang.String",
+                        "12:18: [inline-fqn] java.time.Duration");
+    }
+
+    @Test
     @DisplayName("checks package-info.java and module-info.java, and the types beside them")
     void checksPackageAndModuleDeclarations() {
         Fixture.write(root, "module-info.java", """

@@ -1,10 +1,10 @@
 package dev.dispatch.lint;
 
+import com.sun.source.util.DocTrees;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.Plugin;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
-import com.sun.source.util.Trees;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -26,7 +26,7 @@ public final class DispatchLint implements Plugin {
     public void init(JavacTask task, String... args) {
         Path root = Path.of(args[0]);
         Path index = Path.of(args[1]);
-        Trees trees = Trees.instance(task);
+        DocTrees trees = DocTrees.instance(task);
         delete(index);
         task.addTaskListener(new TaskListener() {
             private final Set<String> lines = new TreeSet<>();
