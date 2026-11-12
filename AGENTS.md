@@ -93,7 +93,10 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 
 ### Tests
 
-- Every test class and method carries a `@DisplayName` sentence. Assert with AssertJ.
+- Every test class and method carries a `@DisplayName` sentence.
+- Assert with AssertJ. The `junit-assert` rule in `dispatch-lint` makes a call to
+  `org.junit.jupiter.api.Assertions` a compile error that names `assertThat` and
+  `assertThatThrownBy`.
 - Behaviour every store shares goes in `JobStoreContract` (`dispatch-core/src/testFixtures`).
   JDBC-only behaviour gets an abstract base with `H2*` and `Postgres*` subclasses, as
   `JdbcScopeAtomicityTest` does.

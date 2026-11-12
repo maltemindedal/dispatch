@@ -36,6 +36,16 @@ final class Fixture {
         }
     }
 
+    /**
+     * Writes a module-info.java and a package-info.java under {@code dir}, each carrying the given
+     * annotation line. They have a declaration to scan but no type element, which a rule that
+     * assumes a class or method must not trip on.
+     */
+    static void writeDeclarations(Path root, String dir, String annotation) {
+        write(root, dir + "/module-info.java", annotation + "\nmodule app {}\n");
+        write(root, dir + "/app/package-info.java", annotation + "\npackage app;\n");
+    }
+
     /** Writes the file, compiles it, and returns every error as {@code line:column: message}. */
     static List<String> compile(Path root, String fileName, String source) {
         write(root, fileName, source);

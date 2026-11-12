@@ -7,6 +7,9 @@ package dev.dispatch.lint;
 enum Rule {
     INLINE_FQN("inline-fqn",
             "%1$s is written inline. Add `import %1$s;` and use the simple name (AGENTS.md, Engine code)."),
+    JUNIT_ASSERT("junit-assert",
+            "%s is a JUnit assertion. Assert with AssertJ: `assertThat(...)`, or `assertThatThrownBy(...)` "
+                    + "for an exception (AGENTS.md, Tests)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

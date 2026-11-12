@@ -2,6 +2,7 @@ package dev.dispatch.lint;
 
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.MemberSelectTree;
+import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.DocTreeFactory;
 import com.sun.source.util.DocTreePath;
@@ -11,6 +12,7 @@ import com.sun.source.util.TreePathScanner;
 import java.util.List;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 
@@ -21,11 +23,14 @@ import javax.tools.Diagnostic;
 final class JavaRules extends TreePathScanner<Void, Void> {
     private final DocTrees trees;
     private final CompilationUnitTree unit;
+    private final boolean inTestSources;
     private boolean reported;
 
     JavaRules(DocTrees trees, CompilationUnitTree unit) {
         this.trees = trees;
         this.unit = unit;
+        String path = unit.getSourceFile().toUri().getPath();
+        this.inTestSources = path.contains("/src/test/") || path.contains("/src/testFixtures/");
     }
 
     /**
@@ -55,6 +60,18 @@ final class JavaRules extends TreePathScanner<Void, Void> {
             return null;
         }
         return super.visitMemberSelect(select, unused);
+    }
+
+    /** junit-assert: a call to a method of the JUnit Assertions class, however it was imported. */
+    @Override
+    public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
+        if (inTestSources && trees.getElement(new TreePath(getCurrentPath(), call.getMethodSelect()))
+                instanceof ExecutableElement method
+                && method.getEnclosingElement() instanceof TypeElement owner
+                && owner.getQualifiedName().contentEquals("org.junit.jupiter.api.Assertions")) {
+            report(call.getMethodSelect(), Rule.JUNIT_ASSERT, "Assertions." + method.getSimpleName());
+        }
+        return super.visitMethodInvocation(call, unused);
     }
 
     /**
