@@ -135,7 +135,7 @@ class DispatchCycleTest {
     @Test
     @DisplayName("concurrent first cycles either cycle or are refused by name")
     void concurrentFirstCyclesAreSafe() throws Exception {
-        // The first dispatchOnce() call does one-time setup, gated by a STARTING state so a
+        // The first dispatchOnce() call does one-time setup under the pool's lifecycle lock, so a
         // second caller cannot pass the ownership guard while the executor is still null. The
         // window that guards against is a few instructions wide, and this test does not manage
         // to hit it even with the guard removed. Read it as a smoke test of the contract
