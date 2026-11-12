@@ -46,7 +46,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   down Error Prone on this bar). No broker, queue or scheduling library in any module, and no
   Flyway before the next schema change (see the `jobs-schema.sql` gotcha).
 - `.github/dependabot.yml` has no `cooldown` blocks on purpose, so Dependabot's default delay
-  applies. PR #15 removed a self-invented 7-day rule.
+  applies. PR #15 removed a self-invented 7-day rule. The `dependabot-cooldown` rule in `checkRepo`
+  fails the build on a `cooldown` key there.
 
 ### Engine code
 

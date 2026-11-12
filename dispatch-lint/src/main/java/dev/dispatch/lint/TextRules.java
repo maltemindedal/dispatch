@@ -24,6 +24,8 @@ final class TextRules {
     private static final Pattern BANNED_WORD = Pattern.compile(
             "\\b(?:(?:de|re)-?queu(?:e[sd]?|eing|ing)|reapers?|revive[sd]?|reviving|dead[- ]letter[- ]queues?)\\b");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\[(?:NOTE:|INSERT|DESCRIBE)|TODO\\(placeholder\\)");
+    private static final String DEPENDABOT_CONFIG = ".github/dependabot.yml";
+    private static final Pattern COOLDOWN_KEY = Pattern.compile("^\\s*cooldown\\s*:");
     /** The rule's own source and tests name the banned words, so they are exempt. */
     private static final String VOCABULARY_EXEMPT_PREFIX = "dispatch-lint/src/";
 
@@ -47,6 +49,9 @@ final class TextRules {
                 Matcher placeholder = PLACEHOLDER.matcher(line);
                 if (prose && placeholder.find()) {
                     findings.add(where + Rule.TEMPLATE_RESIDUE.message(placeholder.group()));
+                }
+                if (file.equals(DEPENDABOT_CONFIG) && COOLDOWN_KEY.matcher(line).find()) {
+                    findings.add(where + Rule.DEPENDABOT_COOLDOWN.message());
                 }
                 if (!file.startsWith(VOCABULARY_EXEMPT_PREFIX)) {
                     Matcher banned = BANNED_WORD.matcher(splitCamelCase(line).toLowerCase(Locale.ROOT).replace('_', ' '));

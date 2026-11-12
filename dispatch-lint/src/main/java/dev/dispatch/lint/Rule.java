@@ -35,6 +35,10 @@ enum Rule {
     TEMPLATE_RESIDUE("template-residue",
             "`%s` is placeholder text left over from a template. Write the real content, or delete the "
                     + "line if it does not apply to this project."),
+    DEPENDABOT_COOLDOWN("dependabot-cooldown",
+            "dependabot.yml has a `cooldown` block. The owner chose Dependabot's default delay, and PR #15 "
+                    + "removed a self-invented 7-day rule. Delete the `cooldown` block (AGENTS.md, Module boundary "
+                    + "and dependencies)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "
