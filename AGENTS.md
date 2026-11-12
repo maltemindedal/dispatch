@@ -65,6 +65,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   actions, `Optional.empty()` for a lost lease. Storage failures surface as `JobStoreException`.
 - Add API, a state transition or a config key in the same change as the code path that uses it.
   Review has removed unused surface (`85fe8e0`) and speculative transitions (PR #11).
+- Nothing publishes this code, so migrate the callers and delete the old API in the same change.
+  The `no-deprecated` rule in `dispatch-lint` makes `@Deprecated` in main code a compile error.
+  (`0f09dac` deprecated three unfenced overloads, and `80457fc` deleted them.)
 - Reuse the existing helper (`registry.require`, `JobState.isCancellable`) instead of writing its
   body again: a repeat review finding.
 - Import types instead of writing them fully qualified inline. The `inline-fqn` rule in

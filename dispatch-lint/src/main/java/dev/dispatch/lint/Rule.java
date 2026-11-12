@@ -19,6 +19,9 @@ enum Rule {
     NO_SYNCHRONIZED("no-synchronized",
             "`synchronized` pins a virtual thread to its carrier on Java 21, and handlers run on virtual "
                     + "threads. Guard the state with a ReentrantLock or a Semaphore (AGENTS.md, Engine code)."),
+    NO_DEPRECATED("no-deprecated",
+            "%s is marked @Deprecated, but nothing publishes this code, so no caller needs time to move. "
+                    + "Migrate the callers and delete it in the same change (AGENTS.md, Engine code)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

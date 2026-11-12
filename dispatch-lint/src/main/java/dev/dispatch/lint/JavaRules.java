@@ -1,5 +1,6 @@
 package dev.dispatch.lint;
 
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.LambdaExpressionTree;
@@ -122,6 +123,17 @@ final class JavaRules extends TreePathScanner<Void, Void> {
             report(method, Rule.NO_SYNCHRONIZED);
         }
         return super.visitMethod(method, unused);
+    }
+
+    /** no-deprecated: the annotation on any declaration in main sources. */
+    @Override
+    public Void visitAnnotation(AnnotationTree annotation, Void unused) {
+        if (inMain && trees.getElement(new TreePath(getCurrentPath(), annotation.getAnnotationType()))
+                instanceof TypeElement type && type.getQualifiedName().contentEquals("java.lang.Deprecated")) {
+            Element declared = trees.getElement(getCurrentPath().getParentPath().getParentPath());
+            report(annotation, Rule.NO_DEPRECATED, declared == null ? "This declaration" : declared.getSimpleName());
+        }
+        return super.visitAnnotation(annotation, unused);
     }
 
     /** no-synchronized, for a block. A synchronized method is reported in {@link #visitMethod}. */
