@@ -88,7 +88,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   class like `InlineFqnTest`: a bad fixture, a good one, and one for each exemption. A whole-repo
   rule goes in `RepoCheck`, which the `:dispatch-lint:checkRepo` task runs as part of `check`.
   The text rules (a word or character in a tracked text file) live in `TextRules`, with one test
-  class per rule. The task's inputs list every text file, so a text-only edit reruns it.
+  class per rule. The task's inputs list every text file, so a text-only edit reruns it. The
+  `template-residue` rule fails a bracketed NOTE, INSERT or DESCRIBE placeholder, or a TODO
+  marked as a placeholder, left in a `.md` or `.yml` file, as the code of conduct once had.
 - A rule lands with the fix for every violation it finds. There is no baseline file and no
   suppression comment: an exemption lives in the rule's code, with a test.
 - The plugin cannot check `dispatch-lint` itself. Every other module gets it from the root

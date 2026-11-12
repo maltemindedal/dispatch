@@ -23,6 +23,7 @@ final class TextRules {
     /** The words the project does not use for its own concepts. This is the one copy of the list. */
     private static final Pattern BANNED_WORD = Pattern.compile(
             "\\b(?:(?:de|re)-?queu(?:e[sd]?|eing|ing)|reapers?|revive[sd]?|reviving|dead[- ]letter[- ]queues?)\\b");
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\[(?:NOTE:|INSERT|DESCRIBE)|TODO\\(placeholder\\)");
     /** The rule's own source and tests name the banned words, so they are exempt. */
     private static final String VOCABULARY_EXEMPT_PREFIX = "dispatch-lint/src/";
 
@@ -35,12 +36,17 @@ final class TextRules {
             if (!isText(file)) {
                 continue;
             }
+            boolean prose = file.endsWith(".md") || file.endsWith(".yml") || file.endsWith(".yaml");
             List<String> lines = Files.readAllLines(root.resolve(file), StandardCharsets.UTF_8);
             for (int i = 0; i < lines.size(); i++) {
                 String line = lines.get(i);
                 String where = file + ":" + (i + 1) + ": error: ";
                 if (line.indexOf(EM_DASH) >= 0) {
                     findings.add(where + Rule.EM_DASH.message());
+                }
+                Matcher placeholder = PLACEHOLDER.matcher(line);
+                if (prose && placeholder.find()) {
+                    findings.add(where + Rule.TEMPLATE_RESIDUE.message(placeholder.group()));
                 }
                 if (!file.startsWith(VOCABULARY_EXEMPT_PREFIX)) {
                     Matcher banned = BANNED_WORD.matcher(splitCamelCase(line).toLowerCase(Locale.ROOT).replace('_', ' '));

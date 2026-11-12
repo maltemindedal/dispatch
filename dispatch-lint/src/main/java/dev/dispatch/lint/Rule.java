@@ -32,6 +32,9 @@ enum Rule {
             "`%s` is not this project's word. Use claim (not dequeue), sweep (not reaper), dead letter "
                     + "(not dead-letter queue), manual retry (not revive or requeue), lease and selection "
                     + "(AGENTS.md, Prose, commits and PRs)."),
+    TEMPLATE_RESIDUE("template-residue",
+            "`%s` is placeholder text left over from a template. Write the real content, or delete the "
+                    + "line if it does not apply to this project."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "
