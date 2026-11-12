@@ -171,10 +171,6 @@ public final class JobQueue implements AutoCloseable {
         return metrics;
     }
 
-    public QueueConfig config() {
-        return config;
-    }
-
     public boolean isRunning() {
         return workers.isRunning();
     }
