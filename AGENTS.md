@@ -140,6 +140,18 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - Behaviour every store shares goes in `JobStoreContract` (`dispatch-core/src/testFixtures`).
   JDBC-only behaviour gets an abstract base with `H2*` and `Postgres*` subclasses, as
   `JdbcScopeAtomicityTest` does.
+- `HostileInputPostgresTest` sends hostile values into every `SubmitJobRequest` component and every
+  `@RequestParam` and `@PathVariable` of every `JobController` handler, found by reflection through
+  Spring's merged mapping under the name Spring binds each by. It needs Docker. While one parameter
+  gets a hostile value, every other required parameter gets a valid one, but only for the types
+  `validValue` knows: a UUID path variable, a number, a boolean, an enum and a `String`. A new
+  field, parameter or handler of those types is covered with no edit. A required parameter of any
+  other type (an `Instant`, say) or a regex path template (`/{key:[a-z]+}`) makes every request a
+  400 or 404, so the parameter beside it is never reached: teach `validValue` the type, or the
+  test the template, in the same change. A new `@RequestBody` type fails the test until it is
+  taught. Each request must not 5xx or name an internal class, and each 201 must read back with
+  the payload it was sent. It leaves Jackson's number coercion unasserted. Its
+  `OPEN_PAYLOAD_FINDING` skips one known gap: a payload of `1e400` reads back as `"Infinity"`.
 - Test what the engine does through `JobQueue.dispatchOnce()` and the claim it returns, and pass
   time by advancing `MutableClock`. Virtual-thread start order says nothing about claim order:
   reading it that way caused both CI flakes so far. The `order-from-timing` rule in
