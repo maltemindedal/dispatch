@@ -3,20 +3,26 @@ package dev.dispatch.lint;
 import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
+import com.sun.source.tree.ExpressionTree;
+import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.LambdaExpressionTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.SynchronizedTree;
 import com.sun.source.tree.Tree;
+import com.sun.source.tree.VariableTree;
 import com.sun.source.util.DocTreeFactory;
 import com.sun.source.util.DocTreePath;
 import com.sun.source.util.DocTrees;
 import com.sun.source.util.TreePath;
 import com.sun.source.util.TreePathScanner;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
-import javax.lang.model.element.Element;
+import java.util.Set;
 import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
@@ -33,6 +39,11 @@ final class JavaRules extends TreePathScanner<Void, Void> {
     private static final String DISPLAY_NAME = "org.junit.jupiter.api.DisplayName";
     private static final List<String> TEST_ANNOTATIONS = List.of("org.junit.jupiter.api.Test",
             "org.junit.jupiter.params.ParameterizedTest", "org.junit.jupiter.api.RepeatedTest");
+
+    private static final Set<String> ORDERED_ASSERTIONS = Set.of("containsExactly",
+            "containsExactlyElementsOf", "containsSequence", "containsSubsequence", "startsWith", "endsWith",
+            "isSorted", "isSortedAccordingTo");
+    private static final String JOB_QUEUE = "dev.dispatch.core.engine.JobQueue";
 
     private final DocTrees trees;
     private final CompilationUnitTree unit;
@@ -119,10 +130,129 @@ final class JavaRules extends TreePathScanner<Void, Void> {
                 && isTestMethod(element) && !hasAnnotation(element, DISPLAY_NAME)) {
             report(method, Rule.DISPLAY_NAME, "Test method " + method.getName());
         }
+        if (inTestSources && trees.getElement(getCurrentPath()) instanceof ExecutableElement element
+                && isTestMethod(element)) {
+            checkOrderFromTiming(method);
+        }
         if (inMain && method.getModifiers().getFlags().contains(Modifier.SYNCHRONIZED)) {
             report(method, Rule.NO_SYNCHRONIZED);
         }
         return super.visitMethod(method, unused);
+    }
+
+    /**
+     * order-from-timing: a test method that starts a running JobQueue and then asserts an order on a
+     * value that did not come from JobQueue.dispatchOnce(). A value counts as coming from it when
+     * its expression, or the initializer of a local variable it reads, calls dispatchOnce.
+     */
+    private void checkOrderFromTiming(MethodTree method) {
+        if (method.getBody() == null) {
+            return;
+        }
+        List<TreePath> starts = new ArrayList<>();
+        List<TreePath> ordered = new ArrayList<>();
+        Set<Element> fromDispatchOnce = new HashSet<>();
+        TreePath body = new TreePath(getCurrentPath(), method.getBody());
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
+                if (calls(getCurrentPath(), JOB_QUEUE, "start")) {
+                    starts.add(getCurrentPath());
+                } else if (isOrderedAssertion(getCurrentPath())) {
+                    ordered.add(getCurrentPath());
+                }
+                return super.visitMethodInvocation(call, unused);
+            }
+        }.scan(body, null);
+        if (starts.isEmpty() || ordered.isEmpty()) {
+            return;
+        }
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (TreePath variable : variablesOf(body)) {
+                VariableTree declaration = (VariableTree) variable.getLeaf();
+                if (declaration.getInitializer() != null && !fromDispatchOnce.contains(trees.getElement(variable))
+                        && mentionsDispatchOnce(new TreePath(variable, declaration.getInitializer()), fromDispatchOnce)) {
+                    fromDispatchOnce.add(trees.getElement(variable));
+                    grew = true;
+                }
+            }
+        }
+        for (TreePath assertionPath : ordered) {
+            MethodInvocationTree assertion = (MethodInvocationTree) assertionPath.getLeaf();
+            ExpressionTree actual = assertedValue(assertion);
+            if (actual != null && !mentionsDispatchOnce(new TreePath(assertionPath, actual), fromDispatchOnce)) {
+                report(assertion, Rule.ORDER_FROM_TIMING, method.getName(), calledName(assertion));
+            }
+        }
+    }
+
+    private List<TreePath> variablesOf(TreePath body) {
+        List<TreePath> found = new ArrayList<>();
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitVariable(VariableTree variable, Void unused) {
+                found.add(getCurrentPath());
+                return super.visitVariable(variable, unused);
+            }
+        }.scan(body, null);
+        return found;
+    }
+
+    private boolean mentionsDispatchOnce(TreePath expression, Set<Element> fromDispatchOnce) {
+        boolean[] found = {false};
+        new TreePathScanner<Void, Void>() {
+            @Override
+            public Void visitMethodInvocation(MethodInvocationTree call, Void unused) {
+                found[0] |= calls(getCurrentPath(), JOB_QUEUE, "dispatchOnce");
+                return super.visitMethodInvocation(call, unused);
+            }
+
+            @Override
+            public Void visitIdentifier(IdentifierTree identifier, Void unused) {
+                found[0] |= fromDispatchOnce.contains(trees.getElement(getCurrentPath()));
+                return super.visitIdentifier(identifier, unused);
+            }
+        }.scan(expression, null);
+        return found[0];
+    }
+
+    /** The argument of the assertThat(...) at the root of an assertion chain, or null if it has none. */
+    private static ExpressionTree assertedValue(MethodInvocationTree assertion) {
+        ExpressionTree current = assertion;
+        while (current instanceof MethodInvocationTree call) {
+            if (call.getMethodSelect() instanceof IdentifierTree name && name.getName().contentEquals("assertThat")
+                    || call.getMethodSelect() instanceof MemberSelectTree select
+                    && select.getIdentifier().contentEquals("assertThat")) {
+                return call.getArguments().isEmpty() ? null : call.getArguments().get(0);
+            }
+            current = call.getMethodSelect() instanceof MemberSelectTree select ? select.getExpression() : null;
+        }
+        return null;
+    }
+
+    private static String calledName(MethodInvocationTree call) {
+        return call.getMethodSelect() instanceof MemberSelectTree select ? select.getIdentifier().toString()
+                : call.getMethodSelect().toString();
+    }
+
+    private boolean calls(TreePath call, String ownerName, String methodName) {
+        return trees.getElement(new TreePath(call, ((MethodInvocationTree) call.getLeaf()).getMethodSelect()))
+                instanceof ExecutableElement method && method.getSimpleName().contentEquals(methodName)
+                && method.getEnclosingElement() instanceof TypeElement owner
+                && owner.getQualifiedName().contentEquals(ownerName);
+    }
+
+    /** An ordered check on an AssertJ iterable or array assertion, not on a String's startsWith. */
+    private boolean isOrderedAssertion(TreePath call) {
+        return trees.getElement(new TreePath(call, ((MethodInvocationTree) call.getLeaf()).getMethodSelect()))
+                instanceof ExecutableElement method && ORDERED_ASSERTIONS.contains(method.getSimpleName().toString())
+                && method.getEnclosingElement() instanceof TypeElement owner
+                && owner.getQualifiedName().toString().startsWith("org.assertj.core.api.")
+                && (owner.getSimpleName().toString().contains("Iterable")
+                        || owner.getSimpleName().toString().contains("Array")
+                        || owner.getSimpleName().toString().contains("List"));
     }
 
     /** no-deprecated: the annotation on any declaration in main sources. */

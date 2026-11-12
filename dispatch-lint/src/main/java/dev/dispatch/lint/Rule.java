@@ -22,6 +22,10 @@ enum Rule {
     NO_DEPRECATED("no-deprecated",
             "%s is marked @Deprecated, but nothing publishes this code, so no caller needs time to move. "
                     + "Migrate the callers and delete it in the same change (AGENTS.md, Engine code)."),
+    ORDER_FROM_TIMING("order-from-timing",
+            "%s starts a running queue and asserts an order with %s on a value that did not come from "
+                    + "JobQueue.dispatchOnce(). A running dispatcher promises no order. Assert on the claim "
+                    + "JobQueue.dispatchOnce() returns, and advance MutableClock to pass time (AGENTS.md, Tests)."),
     LINT_RAN("lint-ran",
             "No clean run of the dispatch-lint javac plugin has seen this file as it is now, so no "
                     + "rule vouches for it. Every JavaCompile needs the plugin: restore the "

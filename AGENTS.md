@@ -112,8 +112,11 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   `JdbcScopeAtomicityTest` does.
 - Test what the engine does through `JobQueue.dispatchOnce()` and the claim it returns, and pass
   time by advancing `MutableClock`. Virtual-thread start order says nothing about claim order:
-  reading it that way caused both CI flakes so far. Keep a running dispatcher and Awaitility for
-  tests about how the engine runs.
+  reading it that way caused both CI flakes so far. The `order-from-timing` rule in
+  `dispatch-lint` fails a test method that calls `JobQueue.start()` and then makes an ordered
+  AssertJ assertion (`containsExactly`, `startsWith` and the like) on a value that did not come from
+  `dispatchOnce()`. It cannot see an order raced through a helper, so that stays a review point.
+  Keep a running dispatcher and Awaitility for tests about how the engine runs.
 
 ### Prose, commits and PRs
 
