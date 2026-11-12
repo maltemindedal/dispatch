@@ -4,9 +4,6 @@ import dev.dispatch.core.store.JobStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,7 +33,7 @@ public final class QueueMaintenance implements AutoCloseable {
     private final Clock clock;
     private final Runnable onWorkPromoted;
 
-    private volatile ScheduledExecutorService scheduler;
+    private volatile BackgroundLoop sweeper;
 
     public QueueMaintenance(
             JobStore store,
@@ -52,27 +49,22 @@ public final class QueueMaintenance implements AutoCloseable {
     }
 
     public void start() {
-        if (scheduler != null) {
+        if (sweeper != null) {
             throw new IllegalStateException("QueueMaintenance already started");
         }
-        ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, config.workerId() + "-maintenance");
-            thread.setDaemon(true);
-            return thread;
-        });
-        // An interval under a millisecond truncates to zero, which the scheduler rejects. By then
-        // the worker pool has already started, so the failure would leave a half-started queue.
-        // Round up to the smallest period the scheduler takes instead.
-        long periodMillis = Math.max(1L, config.maintenanceInterval().toMillis());
-        service.scheduleWithFixedDelay(
-                this::sweepQuietly, periodMillis, periodMillis, TimeUnit.MILLISECONDS);
-        scheduler = service;
+        BackgroundLoop loop = new BackgroundLoop(config.workerId() + "-maintenance",
+                config.maintenanceInterval(), config.maintenanceInterval(), () -> {
+                    sweep();
+                    return false;
+                });
+        sweeper = loop;
+        loop.start();
         log.debug("Maintenance sweeper started, every {}", config.maintenanceInterval());
     }
 
     /**
      * Runs one sweep immediately. Exposed so tests can advance the world deterministically instead
-     * of waiting for the scheduler to tick.
+     * of waiting for the sweeper thread.
      *
      * @return promoted and reclaimed counts
      */
@@ -94,24 +86,12 @@ public final class QueueMaintenance implements AutoCloseable {
         return new SweepResult(promoted, reclaimed);
     }
 
-    private void sweepQuietly() {
-        try {
-            sweep();
-        } catch (Throwable t) {
-            // Never let a transient storage error kill the scheduled task. If this throws,
-            // scheduleWithFixedDelay silently stops running it, and nothing recovers after that.
-            // That includes an Error: the exception is captured in a Future nobody reads, so a
-            // sweeper ended by one would stop without leaving so much as a stack trace.
-            log.error("Maintenance sweep failed; will retry next interval", t);
-        }
-    }
-
     @Override
     public void close() {
-        ScheduledExecutorService service = scheduler;
-        if (service != null) {
-            service.shutdownNow();
-            scheduler = null;
+        BackgroundLoop loop = sweeper;
+        if (loop != null) {
+            loop.stop();
+            sweeper = null;
         }
     }
 

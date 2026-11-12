@@ -14,7 +14,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.LockSupport;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,7 +66,7 @@ public final class WorkerPool implements AutoCloseable {
     private final AtomicReference<State> state = new AtomicReference<>(State.NEW);
 
     private volatile ExecutorService executor;
-    private volatile Thread dispatcher;
+    private volatile BackgroundLoop dispatcher;
     private volatile boolean accepting;
 
     public WorkerPool(
@@ -91,10 +90,14 @@ public final class WorkerPool implements AutoCloseable {
             throw new IllegalStateException("WorkerPool already started (state=" + state.get() + ")");
         }
         beginAccepting();
-        Thread thread = new Thread(this::dispatchLoop, config.workerId() + "-dispatcher");
-        thread.setDaemon(true);
-        dispatcher = thread;
-        thread.start();
+        BackgroundLoop loop = new BackgroundLoop(config.workerId() + "-dispatcher",
+                Duration.ZERO, config.pollInterval(), () -> !dispatchCycle().isEmpty());
+        dispatcher = loop;
+        // A shutdown() that ran before the line above found no loop to stop. It cleared the flag
+        // first, so the loop is not started for it.
+        if (accepting) {
+            loop.start();
+        }
         log.info("Worker pool {} started: concurrency={}, batch={}, visibilityTimeout={}",
                 config.workerId(), config.concurrency(), config.claimBatchSize(),
                 config.visibilityTimeout());
@@ -122,51 +125,13 @@ public final class WorkerPool implements AutoCloseable {
 
     /** Nudges an idle dispatcher so locally submitted work starts without waiting out the poll. */
     public void wakeUp() {
-        Thread current = dispatcher;
+        BackgroundLoop current = dispatcher;
         if (current != null) {
-            LockSupport.unpark(current);
+            current.wake();
         }
     }
 
     // ---------------------------------------------------------------- dispatch
-
-    private void dispatchLoop() {
-        log.debug("Dispatcher {} running", Thread.currentThread().getName());
-        // Converted once, and outside the try: Duration.toNanos() throws for an interval beyond
-        // about 292 years, and it used to be called again inside the error handler below, where a
-        // throw ended the dispatcher thread for good.
-        long pollNanos = nanosSaturating(config.pollInterval());
-        while (accepting) {
-            try {
-                if (dispatchCycle().isEmpty()) {
-                    // Nothing was waiting. Park until the poll interval elapses or a local
-                    // submission unparks us.
-                    LockSupport.parkNanos(this, pollNanos);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            } catch (Throwable t) {
-                // Storage is unhappy. Never spin on it: back off a poll interval and retry. An
-                // Error (a driver's stack overflow, a class that fails to load) is treated like
-                // any other failure of one cycle: if it ended this thread, the pool would go on
-                // reporting itself running while nothing was ever claimed again.
-                log.error("Dispatcher {} hit an unexpected error; backing off",
-                        config.workerId(), t);
-                LockSupport.parkNanos(this, pollNanos);
-            }
-        }
-        log.debug("Dispatcher {} stopped", Thread.currentThread().getName());
-    }
-
-    /** {@code duration} in nanoseconds, or as many as a {@code long} holds if it is longer. */
-    private static long nanosSaturating(Duration duration) {
-        try {
-            return duration.toNanos();
-        } catch (ArithmeticException tooLong) {
-            return Long.MAX_VALUE;
-        }
-    }
 
     /**
      * Runs one dispatch cycle on the calling thread: reserve claim budget, claim that many jobs,
@@ -337,14 +302,10 @@ public final class WorkerPool implements AutoCloseable {
         // 1. Stop claiming. The dispatcher may be blocked on the semaphore or parked; interrupt
         //    breaks it out of either.
         accepting = false;
-        Thread thread = dispatcher;
-        if (thread != null) {
-            thread.interrupt();
-            try {
-                thread.join(Duration.ofSeconds(5).toMillis());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
+        BackgroundLoop loop = dispatcher;
+        if (loop != null) {
+            loop.stop();
+            loop.awaitStopped(Duration.ofSeconds(5));
         }
 
         // 2. Let in-flight handlers finish.
