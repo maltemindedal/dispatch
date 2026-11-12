@@ -37,9 +37,14 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 ### Module boundary and dependencies
 
 - `dispatch-core` uses only the JDK and SLF4J, `dispatch-postgres` adds JDBC but no Spring, and
-  only `dispatch-api` knows Spring. The classpath keeps Spring and Jackson out of core, but nothing
-  stops `java.sql`: it ships with the JDK and core has no `module-info.java`. Keep JDBC in
-  `dispatch-postgres`, behind the `JobRows` seam, by hand.
+  only `dispatch-api` knows Spring. The classpath keeps Spring and Jackson out of core, and
+  `dispatch-core/src/main/java/module-info.java` requires only `org.slf4j`, so `javac` refuses
+  `java.sql` (and any other JDK module) in core main code with `package java.sql is not visible`.
+  Keep JDBC in `dispatch-postgres`, behind the `JobRows` seam. A new package in core that another
+  module uses needs an `exports` line in the descriptor. `InMemoryJobRows` is not exported: reach
+  it through `JobStore.inMemory()`.
+- With the descriptor, `-Xlint:all -Werror` flags `missing-explicit-ctor` on any public class in an
+  exported package. Give it an explicit constructor with a one-line Javadoc, as `QueueMetrics` has.
 - `dispatch-lint` uses only the JDK and no other module. It is build-time only: a javac plugin on
   the annotation processor path of the other three.
 - A new dependency needs its case in the PR body: it has to replace hand-rolled code (PR #7 turned
@@ -140,21 +145,26 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   same commit, says the test was red before the fix, and gives the test count change
   (`325 -> 337 tests`). Docs the change touches go in the same commit.
 - PR bodies follow `.github/pull_request_template.md` and say what was not verified locally and
-  why. Merge with a merge commit (`gh pr merge --merge`), the repo's convention.
+  why.
 
 ## Gotchas
 
 - Files that change together. Only some pairs have a test, so check the rest by hand:
   - Engine defaults: `QueueConfig.Builder` or `ExponentialBackoffRetryPolicy`,
     `dispatch-api/src/main/resources/application.yml` (its bound values override the engine's
-    under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`.
-  - Lifecycle: the transition table and ASCII diagram in `JobState`, the mermaid diagram in
+    under Spring; `ApplicationYmlDefaultsTest` pins the two), and `docs/reference/configuration.md`
+    (`ConfigurationDocTableTest` checks its key and default table against the bound
+    `application.yml` keys).
+  - Lifecycle: the `Transition` enum, the mermaid diagram in
     `docs/architecture/job-lifecycle.md`, and the `CHECK` list in
-    `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. Only the last is tested, by
+    `dispatch-postgres/src/main/resources/db/jobs-schema.sql`. The diagram is tested against the
+    enum by `LifecycleDocTest`, which prints the block to paste, and the `CHECK` list by
     `JobSchemaTest`, which needs Docker.
   - REST responses: the expected text in `RestContractTest` and `StatsContractTest`, and
     `docs/reference/api.md`.
   - Claim order: `JobSelection.CLAIM_ORDER` and the `idx_jobs_claim` index in `jobs-schema.sql`.
+    `ClaimIndexMatchesClaimOrderTest` checks them with no Docker. The index leaves out the trailing
+    `ID` on purpose (`docs/architecture/limitations.md`).
   - PostgreSQL image: `docker-compose.yml`, `PostgresTestSupport.java` and
     `PostgresEndToEndTest.java`. Dependabot bumps only the compose file.
 - `jobs-schema.sql` is applied idempotently at startup with no migration tool, so
@@ -181,7 +191,8 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
   | Outcome writes are fenced by the lease id, worker and attempt: `complete`, `fail` and `deadLetter` take the `Lease` on the claimed snapshot (`job.lease()`), so there is no unfenced form. Every lease gets a fresh id, since a manual retry resets the attempt | `StaleAttemptOutcomeTest`, `ManualRetryStaleOutcomeTest` |
   | Claim permits are conserved: reserve before claiming, return unused ones at once and owed ones in `finally`; claim only what there is room to run, since a claimed job is invisible to peers until its lease expires | `ClaimCapacityTest`, `WorkerPoolShutdownTest` |
   | The interrupt flag is cleared while an outcome is recorded, since JDBC on an interrupted thread fails | `InterruptedOutcomeTest` |
-  | The dispatcher and sweeper survive any `Throwable` from the store and back off one poll interval | `BackgroundErrorResilienceTest` |
+  | The dispatcher and sweeper survive any `Throwable` from the store and back off one interval of their own. `BackgroundLoop` is the one home of that catch, the backoff and the stop, so a new background thread runs on it instead of its own loop or a `ScheduledExecutorService`, which drops a task that throws. The first sweep waits one maintenance interval and `QueueMaintenance.close()` does not wait for the sweeper | `BackgroundErrorResilienceTest`, `QueueMaintenanceTest`, `SweeperTimingTest` |
+  | `WorkerPool` has one lifecycle fact, `state`. It moves only under the pool's `lifecycle` lock, in the same step as the executor and dispatcher it implies, so a `shutdown()` that lands inside `start()` or the first `dispatchOnce()` stops what they built. Ask `state` instead of adding a flag beside it | `WorkerPoolLifecycleRaceTest` |
   | `JobQueue` starts the pool before the sweeper; Spring starts the queue on `ApplicationReadyEvent` | `JobQueueLifecycleRaceTest`, `QueueStartupTest` |
   | `Scope.matching` skips locked rows; `Scope.byId` waits for them, so an operator action answers about the real state | the skipping side by `ConcurrentInstancesIntegrationTest`; nothing tests the waiting |
 

@@ -13,6 +13,9 @@ import java.util.concurrent.atomic.LongAdder;
  */
 public final class QueueMetrics {
 
+    /** Starts every counter at zero. */
+    public QueueMetrics() {}
+
     private final LongAdder submitted = new LongAdder();
     private final LongAdder claimed = new LongAdder();
     private final LongAdder succeeded = new LongAdder();

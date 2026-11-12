@@ -11,8 +11,8 @@ components inside the engine, and separate roles for platform and virtual thread
 | `dispatch-postgres` | `dispatch-core` | `JdbcJobRows`, the same engine backed by PostgreSQL or H2 and using `SELECT ... FOR UPDATE SKIP LOCKED`. Still no Spring. |
 | `dispatch-api` | both | Spring Boot: REST controllers, configuration properties, profile wiring. |
 
-Dependencies only point inward. `dispatch-core` cannot see Spring or JDBC. The build enforces that
-enforced by the build rather than by good intentions, and it is why the engine runs fine in a
+Dependencies only point inward. `dispatch-core` cannot see Spring or JDBC. The build enforces that rather than good intentions: `dispatch-core` has a `module-info.java` that
+requires only SLF4J, so `javac` rejects JDBC there. It is why the engine runs fine in a
 plain `main` method (`JobQueue`'s class Javadoc shows the four-line version).
 
 ## Components and data flow
