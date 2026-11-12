@@ -35,7 +35,7 @@ curl -X POST localhost:8080/jobs -H 'Content-Type: application/json' -d '{
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `type` | string, ≤ 255 chars | yes | Handler routing key. |
-| `payload` | any JSON | no | Stored verbatim and handed to the handler untouched. `null`/absent is stored as `{}`. The whole request body is limited to 1 MiB by default (see the `413` response below). |
+| `payload` | any JSON | no | Stored verbatim and handed to the handler untouched. `null`/absent is stored as `{}`. An unpaired UTF-16 surrogate has no UTF-8 form, so it is stored as its `\uXXXX` escape, which is the same JSON value. The whole request body is limited to 1 MiB by default (see the `413` response below). |
 | `priority` | integer | no | Higher runs first; omit for the normal band (`0`). |
 | `maxRetries` | integer ≥ 0 | no | Retries beyond the first attempt. Default `3`. |
 | `scheduledAt` | ISO-8601 instant | no | Run no earlier than this. Omit to run as soon as possible. A future instant submits the job as `SCHEDULED`. Must lie between `0001-01-01T00:00:00Z` and `9999-12-31T23:59:59.999999999Z`; anything outside is a `400`. |

@@ -16,7 +16,10 @@ import org.springframework.boot.resttestclient.TestRestTemplate;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureTestRestTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -176,6 +179,23 @@ class PostgresEndToEndTest {
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
                 assertThat(rest.getForObject("/jobs/" + healthy.id(), JobResponse.class).state())
                         .isEqualTo(JobState.COMPLETED));
+    }
+
+    @Test
+    @DisplayName("a payload holding a lone UTF-16 surrogate reads back as it was submitted")
+    void loneSurrogatePayloadSurvivesTheTextColumn() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String body = "{\"type\":\"" + TestHandlers.OK + "\","
+                + "\"payload\":{\"text\":\"a\\uD800b\"},"
+                + "\"scheduledAt\":\"" + Instant.now().plus(Duration.ofHours(1)) + "\"}";
+
+        ResponseEntity<JobResponse> created = rest.postForEntity(
+                "/jobs", new HttpEntity<>(body, headers), JobResponse.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        JobResponse stored = rest.getForObject("/jobs/" + created.getBody().id(), JobResponse.class);
+        assertThat(stored.payload().get("text").asString()).isEqualTo("a\uD800b");
     }
 
     @Test
