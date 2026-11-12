@@ -81,4 +81,34 @@ class InlineFqnTest {
                 }
                 """)).isEmpty();
     }
+
+    @Test
+    @DisplayName("checks package-info.java and module-info.java, and the types beside them")
+    void checksPackageAndModuleDeclarations() {
+        Fixture.write(root, "module-info.java", """
+                /** A module. */
+                module app {
+                    exports app.api;
+                    uses java.util.function.Supplier;
+                }
+                """);
+        Fixture.write(root, "app/api/package-info.java", """
+                /** A package. */
+                @java.lang.Deprecated
+                package app.api;
+                """);
+        Fixture.write(root, "app/api/Planted.java", """
+                package app.api;
+
+                public class Planted {
+                    java.time.Instant inline;
+                }
+                """);
+
+        assertThat(Fixture.compile(root)).extracting(error -> error.substring(0, error.indexOf(" is written")))
+                .containsExactlyInAnyOrder(
+                        "module-info.java 4:28: [inline-fqn] java.util.function.Supplier",
+                        "package-info.java 2:11: [inline-fqn] java.lang.Deprecated",
+                        "Planted.java 4:14: [inline-fqn] java.time.Instant");
+    }
 }

@@ -9,6 +9,7 @@ import com.sun.source.util.TreePathScanner;
 import com.sun.source.util.Trees;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 
 /**
@@ -23,6 +24,21 @@ final class JavaRules extends TreePathScanner<Void, Void> {
     JavaRules(Trees trees, CompilationUnitTree unit) {
         this.trees = trees;
         this.unit = unit;
+    }
+
+    /**
+     * Scans what one ANALYZE event attributed. That is a top-level type, or the declaration in a
+     * package-info.java or module-info.java, whose element has no tree of its own.
+     */
+    void check(TypeElement analyzed) {
+        TreePath type = trees.getPath(analyzed);
+        if (type != null) {
+            scan(type, null);
+        } else {
+            TreePath file = new TreePath(unit);
+            Tree declaration = unit.getModule() != null ? unit.getModule() : unit.getPackage();
+            scan(new TreePath(file, declaration), null);
+        }
     }
 
     /** inline-fqn: a type named through its package where an import and the simple name would do. */

@@ -64,8 +64,9 @@ Run from the repo root on a machine with a JDK and a running Docker daemon, as C
 - Reuse the existing helper (`registry.require`, `JobState.isCancellable`) instead of writing its
   body again: a repeat review finding.
 - Import types instead of writing them fully qualified inline. The `inline-fqn` rule in
-  `dispatch-lint` makes one a compile error that names the import. A qualified name stays legal
-  only where the simple name already means another type.
+  `dispatch-lint` makes one a compile error that names the import, in `package-info.java` and
+  `module-info.java` too. A qualified name stays legal only where the simple name already means
+  another type.
 - Spring Boot 4, Jackson 3 and Testcontainers 2 may postdate your training. Jackson lives in
   `tools.jackson.*` (`StringNode` replaced `TextNode`), Boot's test support is split into modules
   such as `spring-boot-resttestclient`, and the container class is

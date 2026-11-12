@@ -55,6 +55,17 @@ class RepoCheckTest {
         assertThat(missed()).containsExactly(FINDING);
     }
 
+    @Test
+    @DisplayName("accepts the package-info.java and module-info.java the plugin saw")
+    void acceptsPackageAndModuleDeclarations() throws IOException {
+        Fixture.write(root, "module-info.java", "module app { exports app.api; }");
+        Fixture.write(root, "app/api/package-info.java", "package app.api;");
+        Fixture.write(root, "app/api/Seen.java", "package app.api; public class Seen {}");
+
+        assertThat(Fixture.compile(root)).isEmpty();
+        assertThat(missed()).isEmpty();
+    }
+
     private List<String> missed() throws IOException {
         return RepoCheck.sourcesThePluginMissed(
                 root, List.of(Fixture.sourceDir(root)), List.of(Fixture.indexDir(root)));

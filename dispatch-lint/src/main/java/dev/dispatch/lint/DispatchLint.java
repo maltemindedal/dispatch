@@ -40,11 +40,9 @@ public final class DispatchLint implements Plugin {
                         // One event per top-level type, fired before javac rewrites that type's
                         // trees. Scanning the whole unit here would read rewritten trees of the
                         // unit's earlier types and unattributed trees of its later ones.
-                        if (event.getTypeElement() != null) {
-                            JavaRules rules = new JavaRules(trees, event.getCompilationUnit());
-                            rules.scan(trees.getPath(event.getTypeElement()), null);
-                            clean &= !rules.reported();
-                        }
+                        JavaRules rules = new JavaRules(trees, event.getCompilationUnit());
+                        rules.check(event.getTypeElement());
+                        clean &= !rules.reported();
                     }
                     case COMPILATION -> {
                         // An index vouches for the sources in it, so a run with a finding leaves none.
