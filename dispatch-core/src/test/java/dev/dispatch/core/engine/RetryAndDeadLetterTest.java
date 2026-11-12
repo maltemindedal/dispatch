@@ -16,10 +16,12 @@ import dev.dispatch.core.retry.RetryPolicy;
 import dev.dispatch.core.store.JobStore;
 import dev.dispatch.core.testing.MutableClock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -172,7 +174,7 @@ class RetryAndDeadLetterTest {
     @Test
     @DisplayName("backoff actually holds the retry back until its time comes")
     void backoffDelaysTheRetry() {
-        List<java.time.Instant> attemptTimes = new CopyOnWriteArrayList<>();
+        List<Instant> attemptTimes = new CopyOnWriteArrayList<>();
         registry.register("slow-retry", context -> {
             attemptTimes.add(clock.instant());
             throw new IllegalStateException("boom");
@@ -285,7 +287,7 @@ class RetryAndDeadLetterTest {
         assertThat(stats.instanceMetrics().failedAttempts()).isEqualTo(2);
         assertThat(stats.instanceMetrics().succeeded()).isEqualTo(1);
         assertThat(stats.instanceMetrics().failureRate())
-                .isCloseTo(2.0 / 3.0, org.assertj.core.data.Offset.offset(1e-9));
+                .isCloseTo(2.0 / 3.0, Offset.offset(1e-9));
         assertThat(stats.depth(JobState.COMPLETED)).isEqualTo(1);
     }
 }

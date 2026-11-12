@@ -14,6 +14,7 @@ import dev.dispatch.core.retry.RetryPolicy;
 import dev.dispatch.core.store.JobStore;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -169,7 +170,7 @@ class ConcurrentInstancesIntegrationTest {
         try {
             JobStore storeA = JobStore.over(new JdbcJobRows(poolA));
             JobStore storeB = JobStore.over(new JdbcJobRows(poolB));
-            java.time.Instant now = java.time.Instant.now();
+            Instant now = Instant.now();
             for (int i = 0; i < 20; i++) {
                 storeA.insert(new JobSubmission("shared-work", "{}", 0, 3, null), now);
             }
@@ -197,7 +198,7 @@ class ConcurrentInstancesIntegrationTest {
         // Simulate an instance that claimed a job and was then killed: the row is RUNNING, held
         // by a worker id that will never report a result. Stage it before the survivor starts,
         // a live instance's dispatcher would legitimately race the doomed claim for the row.
-        java.time.Instant now = java.time.Instant.now();
+        Instant now = Instant.now();
         Job job;
         HikariDataSource staging = PostgresTestSupport.pool(POSTGRES, 2);
         try {
@@ -231,7 +232,7 @@ class ConcurrentInstancesIntegrationTest {
         List<UUID> urgent = new ArrayList<>();
         try {
             JobStore store = JobStore.over(new JdbcJobRows(loader));
-            java.time.Instant now = java.time.Instant.now();
+            Instant now = Instant.now();
             for (int i = 0; i < 40; i++) {
                 store.insert(new JobSubmission("shared-work", "bulk-" + i, 0, 3, null), now);
             }

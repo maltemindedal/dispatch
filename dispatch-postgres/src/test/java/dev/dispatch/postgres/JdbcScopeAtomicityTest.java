@@ -7,6 +7,7 @@ import dev.dispatch.core.job.Job;
 import dev.dispatch.core.job.JobSubmission;
 import dev.dispatch.core.store.JobStoreException;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -137,7 +138,7 @@ abstract class JdbcScopeAtomicityTest {
                 });
     }
 
-    private static Object invoke(Object target, java.lang.reflect.Method method, Object[] args)
+    private static Object invoke(Object target, Method method, Object[] args)
             throws Throwable {
         try {
             return method.invoke(target, args);

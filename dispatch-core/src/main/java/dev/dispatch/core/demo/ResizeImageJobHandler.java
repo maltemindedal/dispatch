@@ -3,6 +3,7 @@ package dev.dispatch.core.demo;
 import dev.dispatch.core.handler.JobContext;
 import dev.dispatch.core.handler.JobHandler;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.atomic.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,7 +44,7 @@ public final class ResizeImageJobHandler implements JobHandler {
         // thread, which is the one workload virtual threads do not help with.
         Thread.sleep(millis);
 
-        if (context.leaseExpired(java.time.Instant.now())) {
+        if (context.leaseExpired(Instant.now())) {
             // Past the visibility deadline the job may already be running elsewhere. Saying so
             // loudly beats silently double-processing.
             log.warn("Job {} overran its visibility lease; another worker may have taken it over",
